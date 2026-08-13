@@ -31,83 +31,77 @@
 <article class="article-body wrap">
 
   <p>
-    This began with a practical constraint: there was no administrative access
-    to the home router. Without port forwarding or VLAN configuration at the
-    router level, remote access to devices had to be achieved by routing around
-    the limitation rather than changing the network infrastructure itself.
+    The project started from a practical constraint: there was no administrative
+    access to the home router. Without router-level control (port forwarding or
+    VLANs), remote access and monitoring needed to be implemented without
+    modifying the network infrastructure itself.
   </p>
 
-  <h2>Step one: get devices reachable at all</h2>
+  <h2>Initial approach</h2>
   <p>
-    The initial approach was to make individual devices reachable remotely by
-    placing them on a VPN so router configuration would not be required. Tailscale
-    was chosen for this purpose: it provides a WireGuard-based mesh overlay that
-    allows devices to be reachable across the internet without direct router changes.
+    The first step was to place individual devices on a mesh VPN so they could
+    be reached remotely without touching the router. Tailscale was selected for
+    its low-friction WireGuard-based overlay: it quickly creates encrypted
+    connectivity between nodes and removes the need for router configuration
+    changes for basic remote access.
   </p>
 
-  <h2>Reaching the rest of the LAN without a VPN client on everything</h2>
+  <h2>Subnet routing for non‑client devices</h2>
   <p>
-    That worked for the handful of devices I could actually install Tailscale
-    on, but home automation gear doesn't run a VPN client. To reach that
-    without touching every device individually, I set up one node as a
-    Tailscale subnet router — a single machine that advertises routes to the
-    rest of the home LAN, so any device on the tailnet can reach anything on
-    that subnet without being on the network directly.
+    Many home devices (smart home appliances, cameras, embedded controllers)
+    cannot run a VPN client. To make those reachable, a subnet router approach
+    was used: one or more machines on the LAN advertise routes into the tailnet
+    so clients on the tailnet can reach devices on the LAN without direct
+    access. This preserves reachability while avoiding changes at the physical
+    router.
   </p>
-  <pre><code># on the subnet router node
-tailscale up --advertise-routes=192.168.1.0/24 --accept-routes
 
-# approve the route from the Tailscale admin console
-# (or via tailscale CLI on a node with admin rights)</code></pre>
-
-  <h2>Removing the single point of failure</h2>
+  <h2>Eliminating single points of failure</h2>
   <p>
-    One subnet router is a single point of failure — if that node goes down,
-    remote access to the entire home network goes down with it. Tailscale
-    supports multiple nodes advertising the same subnet routes with automatic
-    failover between them, so I added two more nodes doing the same thing. If
-    the primary drops, the tailnet routes through one of the others without
-    any manual intervention.
+    A single subnet router is a single point of failure. To avoid losing remote
+    access when one node goes down, multiple nodes were configured to advertise
+    the same routes. Tailscale handles automatic failover between advertising
+    nodes so the tailnet continues to reach the LAN via an available subnet
+    router.
   </p>
 
   <h2>Monitoring the monitors</h2>
   <p>
-    Having three router nodes is only useful if I actually know when one of
-    them dies. A single monitoring instance would just move the single point
-    of failure one layer up, so I ran two Uptime Kuma instances instead, each
-    watching three of the other nodes — and each watching the other Uptime
-    Kuma instance too. If one monitor goes down, the other one is still
-    watching everything, including the fact that its counterpart is down.
+    Redundancy in routing only helps when someone notices a failure. To avoid
+    creating a monitoring single point of failure, two monitoring instances
+    were deployed (Uptime Kuma). Each monitor checks the set of subnet routers
+    and also watches the other monitor, creating a cross-check that reduces the
+    chance of blind spots in monitoring.
   </p>
 
-  <h2>Layering security monitoring on top</h2>
+  <h2>Security monitoring and integration</h2>
   <p>
-    With the network layer stable, I brought Wazuh in as a SIEM across those
-    same three nodes for actual security visibility — not just "is it up,"
-    but "is anything on it behaving strangely." Kismet runs on one node with a
-    WiFi adapter in monitor mode, watching for deauthentication floods and
-    piping alerts into Wazuh over syslog. Frigate runs alongside with motion
-    detection, so the same infrastructure that keeps remote access alive is
-    also the thing watching over the physical space it's protecting.
+    Once the access layer was resilient, security monitoring was layered on
+    top. Wazuh was deployed across the router nodes to collect host telemetry
+    and correlate events. A Kismet instance on one node provides wireless
+    detection and forwards deauth alerts into Wazuh (via syslog), while an
+    object-detection camera (Frigate) provides physical detection signals. The
+    goal was to make remote access and monitoring mutually reinforcing rather
+    than creating separate fragile systems.
   </p>
 
-  <h2>What I'd do differently</h2>
+  <h2>Operational notes and limitations</h2>
   <p>
-    The failover routing and the failover monitoring were both good calls, but
-    I built them as two separate decisions rather than one designed system —
-    if I were doing this from scratch, I'd map out every single point of
-    failure across the whole stack up front (routing, monitoring, alerting,
-    the SIEM itself) instead of noticing and patching each one as it became
-    obviously fragile.
+    The approach works well when multiple reliable nodes are available, but it
+    does add operational complexity (route approval in the Tailscale admin
+    console, keeping subnet routers patched and online, and ensuring monitors
+    remain reachable). Where router admin access is available, integrating
+    required routing changes at the router level can be simpler; this design
+    is a practical workaround when that access is not possible.
   </p>
 
-  <h2>Why this matters for security work</h2>
+  <h2>Lessons learned</h2>
   <p>
-    This wasn't originally a security project — it started as a workaround for
-    not having router access. But the instinct it forced was one that matters
-    directly in offensive security: think about what happens when a component
-    fails, don't assume the happy path holds, and check your own blind spots
-    before someone else finds them for you.
+    Building redundancy early and testing failover behaviour proves valuable:
+    automated failover is only useful if it is exercised and monitored. When
+    designing resilient systems, map failure modes across routing, monitoring,
+    alerting, and response so remediations don't unintentionally introduce new
+    blind spots.
   </p>
 
 </article>

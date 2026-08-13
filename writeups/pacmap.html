@@ -31,89 +31,57 @@
 <article class="article-body wrap">
 
   <p>
-    PacMap is a graph-first network traffic visualizer for live capture and PCAP replay that helps investigators see what changed, what is noisy, and where to inspect next. It is designed to make packet-level activity review faster by representing hosts and conversations as an interactive graph and providing checkpoint/diff workflows for comparison, replay, and investigation.
+    PacMap is a graph-first network traffic visualiser that helps investigators and learners see what changed in a network, identify noisy hosts, and prioritise what to inspect next. It represents hosts and conversations as an interactive graph and focuses on exploration workflows — checkpointing, diffing, and replay — to make pattern discovery faster than scanning raw packet dumps.
   </p>
 
   <div class="img-slot">
     <img src="../assets/OUTPUT.gif" alt="pacmap demo" style="max-width:100%;">
   </div>
 
-  <h2>Input modes</h2>
+  <h2>How it is used</h2>
   <p>
-    PacMap supports two workflows: live capture (inspect traffic on a local interface in real time) and PCAP replay (upload a saved capture and replay packet flow with timeline controls).
+    PacMap supports two complementary workflows: live capture for real-time investigation and PCAP replay for post-hoc analysis. In live mode, a local helper performs packet capture and streams summaries to the browser where the graph updates in near-real time. In replay mode, the browser reads an uploaded capture and replays packet flows over a timeline so the same graph and investigation tools can be applied without needing privileged access.
   </p>
 
-  <h2>Install</h2>
-  <p>From the repository root:</p>
-  <pre><code>python3 -m venv venv
-source venv/bin/activate
-pip install websockets scapy
-npm install --prefix client</code></pre>
-  <p>On Windows, create and activate a venv using your normal Python workflow, then install the same packages. Packet capture on Windows requires Npcap.</p>
-
-  <h2>Live capture</h2>
-  <p>Start PacMap from the repo root and point it at a local interface:</p>
-  <pre><code>npm start -- --iface en0</code></pre>
-  <p>Common interface examples:
-  <ul>
-    <li>macOS Wi‑Fi: <code>en0</code></li>
-    <li>Linux Ethernet: <code>eth0</code></li>
-    <li>Linux Wi‑Fi: <code>wlan0</code></li>
-    <li>Windows: use the Npcap interface name shown by Scapy</li>
-  </ul>
+  <h2>Features and investigator workflow</h2>
+  <p>
+    The visualization concentrates effort on anomalies and changes. Typical workflows are:
   </p>
-  <p>Open <code>http://127.0.0.1:5176</code> in your browser and use the control dock to start capture. Raw capture typically requires elevated privileges; on macOS/Linux run the command under <code>sudo</code>, and on Windows run the terminal as Administrator.</p>
-
-  <h2>Replay PCAP</h2>
-  <p>Switch the source to PCAP Replay in the web app and upload a <code>.pcap</code> or <code>.pcapng</code> file. Replay provides play/pause, speed control, a timeline scrubber, and label-mode controls. Replay runs entirely in the browser and does not require the Python capture server.</p>
-  <p>Replay includes investigation panels for conversations, endpoints, protocol breakdowns, name resolution, and an I/O timeline. File limits: 100 MB and 100,000 packets. Unsupported frames are skipped and counted in the UI.</p>
-
-  <h2>Display filter</h2>
-  <p>Both Live Capture and Replay support a Wireshark-style display filter bar. Enter a filter and press Enter to apply; clear and press Enter to remove it. Supported examples include:</p>
-  <pre><code>tcp          udp          dns          http         arp
-ip.addr == 192.168.1.10
-ip.src == 10.0.0.1
-ip.dst == 8.8.8.8
-tcp.port == 443
-udp.port == 53
-port == 80
-ip.src == 10.0.0.1 && ip.dst == 8.8.8.8</code></pre>
-  <p>Compound filters (using <code>&&</code>) narrow the graph to matching nodes and edges; clearing the filter restores the full view for the current capture window.</p>
-
-  <h2>Path tracing</h2>
-  <p>Providing a compound filter like <code>ip.src == X && ip.dst == Y</code> activates path tracing. PacMap performs a BFS over the capture to find hop chains between endpoints and highlights intermediate nodes in the graph. The hops panel shows per-edge packet and byte counts to aid investigation.</p>
-
-  <h2>Checkpoints</h2>
-  <p>Checkpoints snapshot the current network state (nodes, edges, volumes) and support manual and automatic capture:</p>
   <ul>
-    <li><strong>Manual:</strong> Click Checkpoint and provide a label.</li>
-    <li><strong>Auto:</strong> Configure the control dock to checkpoint on host discovery or other events.</li>
+    <li><strong>Explore:</strong> begin a capture or load a PCAP and watch hosts appear. Nodes represent endpoints; edges represent conversation volume.
+    </li>
+    <li><strong>Filter:</strong> apply display filters (Wireshark-style field expressions) to narrow the graph to relevant traffic — for example by protocol, address, or port.
+    </li>
+    <li><strong>Trace:</strong> activate path tracing between two endpoints to surface intermediate hops and per-edge statistics that help surface likely pivot points.
+    </li>
+    <li><strong>Checkpoint &amp; compare:</strong> take manual or automatic snapshots of the current graph state and compare two checkpoints to highlight added, removed, or changed hosts and flows.
+    </li>
   </ul>
-  <p>Select two checkpoints to compare — added, removed, and changed nodes/edges are highlighted and listed in a diff panel. Checkpoints persist in <code>localStorage</code> under <code>pacmap_checkpoints</code> (up to 50 entries).</p>
 
-  <h2>Why a local helper?</h2>
-  <p>Browsers cannot perform privileged packet capture. PacMap uses a local Python WebSocket helper built on Scapy to perform live capture and stream packet summaries to the React UI at <code>ws://127.0.0.1:8765</code>. PCAP replay runs in the browser and does not require the helper.</p>
+  <h2>Installation &amp; running (summary)</h2>
+  <p>
+    The project includes a browser-based frontend and an optional local capture helper that uses Scapy. The frontend runs in a modern browser and supports PCAP replay without the helper. Live capture requires the helper and appropriate local privileges; the repository includes development instructions and a lightweight local server to bridge capture summaries into the UI.
+  </p>
 
-  <h2>Development</h2>
-  <p>Frontend only:</p>
-  <pre><code>cd client
-npm install
-npm run dev</code></pre>
-  <p>Production build: <code>npm run build</code></p>
-  <p>Capture server only:</p>
-  <pre><code>source venv/bin/activate
-python3 server.py --iface en0</code></pre>
+  <h2>Limitations &amp; privacy</h2>
+  <p>
+    PacMap summarises observed packets into graph elements; it is not a full replacement for packet-level analysis in Wireshark. Large captures may be slow to replay in the browser and some link types or non-IP frames are skipped. Live capture requires elevated privileges — run with care and only on networks you own or have permission to inspect. The tool is intended for learning and investigative use on permitted networks.
+  </p>
+
+  <h2>Development notes</h2>
+  <p>
+    The frontend uses an interactive WebGL-based graph and a small set of investigation panels (conversations, protocol breakdowns, endpoints). The local helper streams summaries over a WebSocket; for development the UI can be run independently and fed PCAPs for fast iteration.
+  </p>
 
   <h2>Troubleshooting</h2>
   <ul>
-    <li>If the UI shows the capture server offline, confirm <code>server.py</code> is running and the WebSocket port is available.</li>
-    <li>If capture fails, verify the interface name and run with the required privileges.</li>
-    <li>If no live nodes appear, generate traffic (browse, ping, or run DNS lookups).</li>
-    <li>If many packets are skipped when loading a PCAP, the file may use an unsupported link type or contain encrypted/non‑IP traffic.</li>
+    <li>If the UI reports the helper offline, confirm the helper process is running and that the selected WebSocket port is free.</li>
+    <li>If captures show few hosts, generate traffic on the inspected interface (DNS, pings, browsing) to confirm the capture path.</li>
+    <li>For large PCAPs, try trimming to a shorter timeframe or using sampling to make replay responsive.</li>
   </ul>
 
   <h2>Tech</h2>
-  <p>React + Vite · Three.js · Python WebSocket server · Scapy</p>
+  <p>React + Vite · Three.js · Python WebSocket helper · Scapy</p>
 
 </article>
 

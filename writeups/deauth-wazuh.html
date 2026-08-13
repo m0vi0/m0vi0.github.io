@@ -31,125 +31,47 @@
 <article class="article-body wrap">
 
   <p>
-    Many home networks lack visibility into local wireless activity. A
-    deauthentication attack — which forces devices to disconnect so their
-    reassociation can be captured — often goes unnoticed by consumer routers.
-    Wazuh was already deployed as the homelab SIEM, so the objective here was
-    to forward meaningful WiFi IDS alerts into the existing security pipeline
-    rather than leaving them siloed in a separate dashboard.
+    Many home networks lack visibility into local wireless activity. Deauthentication attacks — which force devices to disconnect so their reassociation can be captured — often go unnoticed by consumer routers. Because Wazuh was already deployed as the homelab SIEM, the objective for this project was practical: forward meaningful WiFi IDS alerts into the existing security pipeline so that detection becomes part of an operational workflow rather than an overlooked dashboard.
   </p>
 
   <h2>The setup</h2>
   <p>
-    A Raspberry Pi 3B+ already sits on my home network as a subnet router, so I
-    put Kismet on it in monitor mode with a dedicated WiFi adapter, purely for
-    detection rather than device inventory.
+    A small single-board computer on the network was repurposed as a monitoring node running Kismet with a dedicated WiFi adapter in monitor mode. The node's role is purely detection: it listens for management frames and raises alerts when conditions match configured thresholds. Using a low-cost device keeps the monitoring footprint lightweight and easy to recover or replace.
   </p>
-  <pre><code># put the adapter into monitor mode
-airmon-ng check kill
-airmon-ng start wlan1
 
-# run kismet against the monitor interface
-kismet -c wlan1mon</code></pre>
+  <h2>Kismet alerts and DEAUTHFLOOD</h2>
   <p>
-    Kismet ships with a built-in alert type for exactly this scenario —
-    <code>DEAUTHFLOOD</code>, which fires when it sees an abnormal rate of
-    deauthentication frames from a source. The throttle is configurable in
-    <code>kismet_site.conf</code>, so it doesn't fire on every single
-    disconnect a client legitimately sends:
+    Kismet includes an alert type for elevated rates of deauthentication frames (DEAUTHFLOOD). The alerting is rate-based per source to avoid firing on normal roaming or transient noise; the threshold is configurable so it can be matched against the expected behaviour of a given environment.
   </p>
-  <pre><code># kismet_site.conf
-alert=DEAUTHFLOOD,5/min,1/sec</code></pre>
 
-  <h2>Getting alerts out of Kismet</h2>
+  <h2>Forwarding alerts into Wazuh</h2>
   <p>
-    Kismet's alerts live in its own REST endpoint and web UI, not in syslog by
-    default, so they never reach Wazuh on their own. Rather than patch Kismet
-    itself, I wrote a small poller that watches
-    <code>/alerts/views/all/alerts.json</code> for new entries and forwards
-    each one to the local syslog, which the Wazuh agent already collects from.
+    Kismet exposes recent alerts through its web endpoint. A lightweight poller watches the alerts feed, deduplicates by alert timestamp, and forwards each new alert into the local syslog. The Wazuh agent collects syslog entries and the SIEM is therefore able to ingest, correlate, and act on wireless events alongside the rest of the environment.
   </p>
-  <pre><code>import requests, syslog, time
 
-KISMET_URL = "http://127.0.0.1:2501/alerts/views/all/alerts.json"
-seen = set()
-
-syslog.openlog("kismet-alert", facility=syslog.LOG_LOCAL0)
-
-while True:
-    # Use a secure credential store or environment variable for the password
-    resp = requests.get(KISMET_URL, auth=("admin", "<kismet_password>"))
-    for alert in resp.json():
-        alert_id = alert.get("kismet.alert.timestamp")
-        if alert_id not in seen:
-            seen.add(alert_id)
-            msg = f"KISMET_ALERT type={alert.get('kismet.alert.class')} " \
-                  f"text={alert.get('kismet.alert.text')}"
-            syslog.syslog(syslog.LOG_WARNING, msg)
-    time.sleep(5)</code></pre>
-
-  <p>For production use, run the poller under a service manager (for example, a systemd unit) and store any credentials securely (environment variables or a secrets store rather than hard-coding them).</p>
-
-  <h2>Writing the Wazuh rule</h2>
+  <h2>Wazuh decoding and rules</h2>
   <p>
-    The stock Wazuh ruleset has no idea what a Kismet alert looks like, so this
-    needed a custom decoder and rule in <code>local_rules.xml</code> — a decoder
-    to parse the forwarded syslog tag, and a rule to fire on it.
+    To make Kismet alerts meaningful in Wazuh, a small custom decoder and rule were added to the local ruleset. The decoder matches the forwarded syslog tag and extracts the alert type and text; the rule fires on the DEAUTHFLOOD alert type and assigns an appropriate severity and description. This lets the SIEM treat those events like any other security telemetry and enables downstream actions such as notifications or ticketing.
   </p>
-  <pre><code>&lt;!-- local_decoder.xml --&gt;
-&lt;decoder name="kismet-alert"&gt;
-  &lt;prematch&gt;KISMET_ALERT&lt;/prematch&gt;
-&lt;/decoder&gt;
 
-&lt;decoder name="kismet-alert-type"&gt;
-  &lt;parent&gt;kismet-alert&lt;/parent&gt;
-  &lt;regex&gt;type=(\S+) text=(.+)&lt;/regex&gt;
-  &lt;order&gt;alert_type, alert_text&lt;/order&gt;
-&lt;/decoder&gt;</code></pre>
-  <pre><code>&lt;!-- local_rules.xml --&gt;
-&lt;group name="kismet,wireless,"&gt;
-  &lt;rule id="100201" level="10"&gt;
-    &lt;decoded_as&gt;kismet-alert&lt;/decoded_as&gt;
-    &lt;field name="alert_type"&gt;DEAUTHFLOOD&lt;/field&gt;
-    &lt;description&gt;WiFi deauthentication flood detected by Kismet&lt;/description&gt;
-    &lt;mitre&gt;
-      &lt;id&gt;T1499&lt;/id&gt;
-    &lt;/mitre&gt;
-  &lt;/rule&gt;
-&lt;/group&gt;</code></pre>
-
-  <h2>Tuning out the noise</h2>
+  <h2>Tuning and operational considerations</h2>
   <p>
-    Raw deauth events are noisier than they look at first — normal WiFi roaming
-    generates legitimate deauth/reassociation frames as devices move between
-    APs or drop and reconnect on a weak signal, and a naive rule that alerts on
-    any deauth frame at all will bury a real attack in false positives within a
-    day. Kismet's own <code>DEAUTHFLOOD</code> throttle (rate-per-source rather
-    than raw frame count) does most of the filtering before the alert ever
-    reaches Wazuh, but it's still worth tuning the rate threshold against your
-    own network's baseline rather than trusting the default — a house full of
-    IoT devices on weak WiFi looks very different from a quiet network with two
-    laptops.
+    Wireless environments are noisy and what looks like an attack in one home may be normal behaviour in another. The DEAUTHFLOOD rate threshold should be verified against day-to-day baseline traffic and adjusted to avoid false positives. Additionally, deduplication in the poller and sensible rule levels in Wazuh help prevent alert storms. For production use, run the poller as a managed service and keep credentials in environment variables or a secrets store rather than hard-coding them.
   </p>
 
-  <h2>Getting notified</h2>
+  <h2>Notifications and response</h2>
   <p>
-    Alerts route through the Postfix relay already configured for the rest of
-    the homelab, so a real deauth flood shows up as an email rather than a line
-    sitting in a dashboard nobody's watching in real time.
+    Alerts were routed through the existing mail relay so significant events produce an email notification. This ensures a human on-call or an incident response process sees the event rather than it remaining in an unattended dashboard. The mail path is intentionally simple so notification can reach responders quickly; more advanced integrations (webhooks, alert managers, or ticketing systems) are straightforward next steps.
   </p>
+
   <div class="img-slot"></div>
 
-  <h2>What I'd do differently</h2>
+  <h2>Improvements and next steps</h2>
   <p>
-    Polling Kismet's alert endpoint every few seconds works, but it's not
-    elegant — Kismet's newer versions support a websocket event stream, which
-    would push alerts the moment they fire instead of introducing a five-second
-    polling lag. That's the next iteration: swap the poller for a persistent
-    websocket listener so detection-to-alert latency drops from seconds to
-    effectively real time.
+    Polling the alerts feed is simple and reliable, but moving to an event-driven approach (for example, a persistent websocket subscription where supported) would reduce detection-to-notification latency and lower load. Longer term, correlating wireless alerts with other signals in the SIEM (DHCP logs, client posture, or network flows) can help place a deauth flood in context and reduce false positives.
   </p>
 
+</article>
 </article>
 
 <footer>
