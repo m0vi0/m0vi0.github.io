@@ -372,20 +372,25 @@ async function start() {
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   const tip = stage.querySelector('.rack-tip');
   const count = document.getElementById('count'), countLabel = document.getElementById('count-label');
-  const meshes = units.map(u => u.mesh);
+  const meshes = units.map(u => u.mesh), rackMeshes = [...meshes, frameMesh], local = new THREE.Vector3();
   let hot = null;
   function pick(ev) {
     const r = canvas.getBoundingClientRect();
     ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(meshes, false)[0];
-    return { u: hit?.object.userData.unit ?? null, hit, x: ev.clientX - r.left, y: ev.clientY - r.top };
+    const hit = ray.intersectObjects(rackMeshes, false)[0];
+    let u = hit?.object.userData.unit ?? null;
+    if (u) { u.pivot.worldToLocal(local.copy(hit.point)); if (Math.abs(local.y) > u.h * .35 || Math.abs(local.x) > u.w * .45) u = null; }   // only the middle of a unit counts; its edges belong to the rack
+    // rack: the unit nearest the pointer's height, for clicks on the cabinet between units
+    const rack = hit ? units.reduce((a, b) => Math.abs(b.pivot.getWorldPosition(local).y - hit.point.y) < Math.abs(a.pivot.getWorldPosition(local).y - hit.point.y) ? b : a) : null;
+    return { u, rack, hit, x: ev.clientX - r.left, y: ev.clientY - r.top };
   }
   function readout(u) {
     count.textContent = String(u ? u.i + 1 : 9).padStart(2, '0');
     countLabel.textContent = u ? u.li.dataset.label : 'servers';
   }
   function setHot(u, x, y) {
+    if (hot !== u) { hot?.plate.material.color.setScalar(1); u?.plate.material.color.setScalar(3.2); }   // hovered unit: faceplate lifts from near-black to grey
     hot = u;
     if (u) page(u);                                         // hover only preloads; the pull-out waits for a click
     canvas.style.cursor = u?.link ? 'pointer' : 'default';
@@ -414,7 +419,7 @@ async function start() {
     return Math.abs(mxT - mx) + Math.abs(myT - my) > 1e-3;
   }
 
-  canvas.addEventListener('pointermove', ev => { if (!portal) { const p = pick(ev); setHot(p.u, p.x, p.y); } });
+  canvas.addEventListener('pointermove', ev => { if (!portal) { const p = pick(ev); setHot(p.u, p.x, p.y); if (!p.u && p.rack && scanOn) canvas.style.cursor = 'zoom-in'; } });
   canvas.addEventListener('pointerleave', () => setHot(null));
   // first click pulls a server out (click sound), a second click on it opens it (drawer sound)
   let picked = null, audio = null;
@@ -463,8 +468,8 @@ async function start() {
   }
   canvas.addEventListener('click', ev => {
     if (portal) return;
-    const { u, hit, x, y } = pick(ev);
-    if (!u) return pickServer(null);                       // empty space or the frame: slide back in
+    const { u, rack, hit, x, y } = pick(ev);
+    if (!u) { pickServer(null); if (rack && scanOn) goStop(rack.i + 1); return; }   // the cabinet: close up on the nearest unit; empty space: slide back in
     ripple(x, y);
     if (u !== picked) { sfx('click'); return pickServer(u); }
     if (!u.link) return;                                   // the skills servers are labels only
