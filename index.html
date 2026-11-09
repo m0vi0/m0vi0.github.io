@@ -22,6 +22,9 @@
   "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/dist/esm/simplex-noise.js"
 } }
 </script>
+<!-- start the rack's two big downloads (three.js and the model) with the HTML instead of after rack.js parses -->
+<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js">
+<link rel="preload" href="assets/rack.glb" as="fetch" crossorigin>
 <script type="module" src="assets/rack.js"></script>
 <script type="module" src="assets/waves.js"></script>
 <script type="module" src="assets/evervault.js"></script>

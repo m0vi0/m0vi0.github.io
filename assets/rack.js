@@ -313,9 +313,9 @@ async function start() {
   function buildPoses() {
     const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     let far = Math.max(1.15 / t, 0.55 / (t * aspect)), heroFar = far, shift = [scanOn && aspect > 1.2 ? .2 : 0, 0]; // wide: rack right of the copy
-    if (scanOn && aspect < 1) {                             // portrait: fit the rack between the first name and the copy
+    if (scanOn && aspect < 1) {                             // portrait: fit the rack between the whole name and the copy
       const top = stage.getBoundingClientRect().top;
-      const y0 = hero.querySelector('.wordmark .first').getBoundingClientRect().bottom - top;
+      const y0 = hero.querySelector('.wordmark').getBoundingClientRect().bottom - top + H * .02;
       const y1 = hero.querySelector('.hero-copy').getBoundingClientRect().top - top;
       heroFar = Math.max(1.15 / (t * Math.max(y1 - y0, H * .3) / H), far);
       shift = [0, ((y0 + y1) / 2 - H / 2) / H];
@@ -364,8 +364,15 @@ async function start() {
     });
     document.addEventListener('focusin', e => {             // keyboard on the hidden content: show its server
       const n = e.target.closest?.('[data-unit]')?.dataset.unit;
-      if (n != null) goStop(+n + 1);
+      if (n == null) return;
+      goStop(+n + 1);
+      // the focused link itself is clipped away, so name it on screen (WCAG 2.4.7)
+      tip.innerHTML = `${units[n].li.dataset.label}<small></small>`;
+      const text = e.target.textContent.trim();
+      if (text !== units[n].li.dataset.label) tip.lastChild.textContent = text;
+      tip.classList.add('is-focus'); tip.hidden = false;
     });
+    document.addEventListener('focusout', () => { tip.classList.remove('is-focus'); tip.hidden = true; });
   }
 
   // ---- picking ----

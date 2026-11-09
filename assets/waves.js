@@ -7,6 +7,8 @@ const ctx = canvas?.getContext('2d');
 if (ctx) {
   const noise = createNoise2D(), GAP = 8;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const coarse = matchMedia('(pointer: coarse)').matches;          // phones: no cursor to follow, so half the frame rate is enough
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--black').trim() || '#0D0D0D';
   let lines = [], W = 0, H = 0, raf = 0, visible = true;
   const mouse = { x: -10, y: 0, lx: 0, ly: 0, sx: 0, sy: 0, vs: 0, a: 0, set: false };
 
@@ -41,10 +43,11 @@ if (ctx) {
       const px = p.x + Math.cos(m) * 12, py = p.y + Math.sin(m) * 6;
       j ? ctx.lineTo(px + p.cx, py + p.cy) : ctx.moveTo(px, py);
     });
-    ctx.strokeStyle = 'rgb(13 13 13 / .22)'; ctx.lineWidth = 1; ctx.stroke();   // faint: full black drowns the name and copy
+    ctx.strokeStyle = ink; ctx.globalAlpha = .22; ctx.lineWidth = 1; ctx.stroke();   // faint: full black drowns the name and copy
   }
 
-  const tick = t => { draw(t); raf = requestAnimationFrame(tick); };
+  let odd = false;
+  const tick = t => { if (!coarse || (odd = !odd)) draw(t); raf = requestAnimationFrame(tick); };
   function wake() {
     cancelAnimationFrame(raf); raf = 0;
     if (reduce) draw(0); else if (visible && !document.hidden) raf = requestAnimationFrame(tick);
