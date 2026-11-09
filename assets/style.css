@@ -53,6 +53,9 @@ img, video { max-width: 100%; display: block; }
 .mark { font: 400 1.9rem/1 var(--display); text-decoration: none; letter-spacing: .02em; }
 .nav nav { display: flex; gap: clamp(1rem, 2.5vw, 2.5rem); }
 .nav nav a { font: 600 .72rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; text-decoration: none; padding: .5rem 0; }
+/* small text links: an invisible hit area brings the tap target near 44px without moving the layout */
+:is(.nav nav a, .link, .writeup-top .back) { position: relative; }
+:is(.nav nav a, .link, .writeup-top .back)::after { content: ''; position: absolute; inset: -.875rem -.25rem; }
 .nav nav a:hover { text-decoration: underline; text-underline-offset: .4em; text-decoration-thickness: 1.5px; }
 
 /* ---- hero: yellow field; the rack is the far layer, the wordmark and copy sit in front (rack.js sets the --mx/--my text parallax) ---- */
@@ -84,6 +87,7 @@ img, video { max-width: 100%; display: block; }
   background: var(--black); color: var(--ink); padding: .6rem .85rem;
   font: 700 .72rem/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
 }
+.rack-tip.is-focus { position: fixed; left: var(--gutter); top: auto; bottom: 2rem; translate: none; outline: 3px solid var(--lime); outline-offset: 3px; }
 .rack-tip small { display: block; font-weight: 500; letter-spacing: .08em; text-transform: none; color: var(--yellow); margin-top: .25rem; font-size: .78rem; }
 /* click on a server: a ring spreads from the cursor */
 .ripple { position: absolute; z-index: 2; width: 48px; height: 48px; margin: -24px 0 0 -24px; border: 2px solid var(--yellow); border-radius: 50%; pointer-events: none; animation: ripple .45s ease-out forwards; }
@@ -125,8 +129,9 @@ img, video { max-width: 100%; display: block; }
 .scan-on .pitch { display: none; }
 .scan-on :is(.wordmark, .hero-copy, .scroll-cue) { opacity: calc(1 - var(--p) * 1.5); }
 .scan-on .hero.is-close .hero-copy { visibility: hidden; }
-.scan-on .stops { display: block; margin-top: -100svh; pointer-events: none; }
-.scan-on .stop { display: block; height: 100svh; scroll-snap-align: start; }
+/* one stop per half screen; the padding keeps the scroll span at 10 stops so stop i still lands on server i */
+.scan-on .stops { --stop: 50svh; display: block; margin-top: -100svh; padding-bottom: calc(100svh - var(--stop)); pointer-events: none; }
+.scan-on .stop { display: block; height: var(--stop); scroll-snap-align: start; }
 .scan-on .footer { scroll-snap-align: end; }
 .scan-on .marquee { display: none; }
 /* the servers carry this content now; it stays for screen readers and keyboard (focus moves the camera) */
@@ -295,7 +300,14 @@ img, video { max-width: 100%; display: block; }
   .sticker { top: 40%; width: 11rem; }
 }
 @media (max-width: 26rem) {
-  .nav nav a:nth-child(2) { display: none; }
+  .nav nav { gap: .7rem; }
+  .nav nav a { letter-spacing: .05em; }
+}
+
+/* phones: two full-screen blurs redrawn every scroll frame make the scan stutter */
+@media (pointer: coarse) {
+  .scan-on .stage::after { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .waves { filter: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
