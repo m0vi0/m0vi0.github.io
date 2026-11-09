@@ -55,7 +55,7 @@ img, video { max-width: 100%; display: block; }
 .nav nav a { font: 600 .72rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; text-decoration: none; padding: .5rem 0; }
 .nav nav a:hover { text-decoration: underline; text-underline-offset: .4em; text-decoration-thickness: 1.5px; }
 
-/* ---- hero: yellow field; the rack is the far layer, the wordmark and copy sit in front (rack.js sets --mx/--my parallax and the blur vars) ---- */
+/* ---- hero: yellow field; the rack is the far layer, the wordmark and copy sit in front (rack.js sets the --mx/--my text parallax) ---- */
 .hero {
   position: relative; min-height: max(100svh, 44rem);
   background: radial-gradient(ellipse 120% 95% at 50% 45%, var(--yellow) 40%, var(--yellow-deep) 100%); color: var(--black);
@@ -64,15 +64,17 @@ img, video { max-width: 100%; display: block; }
 }
 .wordmark {
   position: absolute; z-index: 1; left: var(--gutter); right: var(--gutter); top: 50%;
-  translate: calc(var(--mx, 0) * 14px) calc(-62% + var(--my, 0) * 10px); filter: blur(var(--blur-text, 0px));
+  translate: calc(var(--mx, 0) * 12px) calc(-62% + var(--my, 0) * 8px);
   color: var(--yellow); mix-blend-mode: difference; pointer-events: none; /* black on the yellow, yellow over the rack */
   margin: 0; font-family: var(--display); font-weight: 400; line-height: .86; letter-spacing: -.01em; text-transform: uppercase;
 }
-.wordmark span { display: block; }
+.wordmark span { display: block; width: fit-content; }   /* hover box = the letters, not the full row */
 .wordmark .first { font-size: clamp(3rem, 7vw, 7.5rem); }
 .wordmark .last { font-size: clamp(8rem, 19vw, 19rem); }
 
-.stage { position: absolute; z-index: 0; filter: blur(var(--blur-rack, 0px)); top: 4rem; bottom: 0; right: 0; width: 60%; min-width: 0; overflow: hidden; display: none; }
+/* farthest layer: noise-bent lines (waves.js), blurred while the scan has the rack close (--dof) */
+.waves { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; pointer-events: none; filter: blur(calc(var(--dof, 0) * 6px)); }
+.stage { position: absolute; z-index: 0; top: 4rem; bottom: 0; right: 0; width: 60%; min-width: 0; overflow: hidden; display: none; }
 /* absolute canvas: its intrinsic size must not feed back into the layout (Retina resize loop) */
 .stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .stage .portal-page { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; visibility: hidden; pointer-events: none; }
@@ -83,8 +85,11 @@ img, video { max-width: 100%; display: block; }
   font: 700 .72rem/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
 }
 .rack-tip small { display: block; font-weight: 500; letter-spacing: .08em; text-transform: none; color: var(--yellow); margin-top: .25rem; font-size: .78rem; }
+/* click on a server: a ring spreads from the cursor */
+.ripple { position: absolute; z-index: 2; width: 48px; height: 48px; margin: -24px 0 0 -24px; border: 2px solid var(--yellow); border-radius: 50%; pointer-events: none; animation: ripple .45s ease-out forwards; }
+@keyframes ripple { from { scale: 0; opacity: 1; } to { scale: 1; opacity: 0; } }
 
-.hero-copy { position: relative; z-index: 2; max-width: 34rem; translate: calc(var(--mx, 0) * 7px) calc(var(--my, 0) * 5px); filter: blur(calc(var(--blur-text, 0px) / 2)); }
+.hero-copy { position: relative; z-index: 2; max-width: 34rem; translate: calc(var(--mx, 0) * 12px) calc(var(--my, 0) * 8px); }
 .tagline { margin: 0 0 1rem; font: 500 clamp(.95rem, 1.5vw, 1.3rem)/1.3 var(--sans); letter-spacing: .1em; text-transform: uppercase; }
 .pitch { margin: 0 0 2rem; max-width: 46ch; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1.25rem 2rem; }
@@ -218,20 +223,29 @@ img, video { max-width: 100%; display: block; }
 .cta-links .link:last-child { text-transform: none; letter-spacing: .02em; }
 
 /* footer */
-.footer { border-top: 1px solid var(--hair); overflow: hidden; }
+.footer { position: relative; border-top: 1px solid var(--hair); overflow: hidden; }
 .colophon {
-  display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem 2rem; margin: 0;
+  position: relative; z-index: 1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem 2rem; margin: 0;
   padding: 2rem var(--gutter); font: 500 .72rem/1.6 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
 }
 .colophon a { color: var(--ink); }
-.footer-mark {
-  margin: 0 0 -.18em; padding: 0 var(--gutter); text-align: center; white-space: nowrap;
-  font: 400 24vw/.86 var(--display); text-transform: uppercase; color: transparent; -webkit-text-stroke: 1.5px rgb(245 240 232 / .3);
+/* hover: a spotlight of scrambling letters over a lime→blue field follows the cursor (evervault.js sets --x/--y and the letters) */
+.ever {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s;
+  background: linear-gradient(90deg, var(--lime), var(--blue));
+  -webkit-mask-image: radial-gradient(250px at var(--x, 50%) var(--y, 50%), #fff, transparent);
+  mask-image: radial-gradient(250px at var(--x, 50%) var(--y, 50%), #fff, transparent);
+}
+.footer:hover .ever { opacity: 1; }
+.ever-chars {
+  position: absolute; inset: 0; margin: 0; overflow: hidden; word-break: break-all; white-space: pre-wrap;
+  font: 700 .75rem/1.33 ui-monospace, SFMono-Regular, Menlo, monospace; color: #fff; mix-blend-mode: overlay;
 }
 
 /* portal: only the rack is left on screen while the camera flies into a server's lid */
 .portal-on :is(.wordmark, .hero-copy, .counter, .scroll-cue, .nav) { opacity: 0; transition: opacity .3s; }
 .portal-on .stage { filter: none; }
+.portal-on .waves { opacity: 0; }
 .portal-on .stage::after { opacity: 0; }
 @view-transition { navigation: auto; }
 

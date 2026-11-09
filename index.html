@@ -18,10 +18,13 @@
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+  "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/dist/esm/simplex-noise.js"
 } }
 </script>
 <script type="module" src="assets/rack.js"></script>
+<script type="module" src="assets/waves.js"></script>
+<script type="module" src="assets/evervault.js"></script>
 </head>
 <body>
 
@@ -38,6 +41,7 @@
 <main>
   <div class="scan">
   <section class="hero" id="top">
+    <canvas class="waves" aria-hidden="true"></canvas>
     <h1 class="wordmark"><span class="first">Mervin</span> <span class="last">Sequeira</span></h1>
 
     <div class="stage" aria-hidden="true">
@@ -162,12 +166,12 @@
 </main>
 
 <footer class="footer">
+  <div class="ever" aria-hidden="true"><p class="ever-chars"></p></div>
   <p class="colophon">
     <span>Mervin Sequeira · Mangaluru, India · <a href="mailto:mervinsequeira485@gmail.com">mervinsequeira485@gmail.com</a></span>
     <span>Rack model “<a href="https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218">Server Rack</a>” by Spellkaze,
       <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</span>
   </p>
-  <p class="footer-mark" aria-hidden="true">Sequeira</p>
 </footer>
 
 </body>
