@@ -3,82 +3,102 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Catching Deauth Floods: A Homemade WiFi IDS Feeding Wazuh — m0vi0</title>
+<title>Catching deauth floods: a homemade WiFi IDS feeding Wazuh — Mervin Sequeira</title>
+<meta name="description" content="Kismet on a single-board computer, alerts forwarded over syslog into the SIEM I already run.">
+<meta name="theme-color" content="#f3f3ee">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23151515%22/%3E%3Crect x=%222%22 y=%226%22 width=%2212%22 height=%224%22 fill=%22%23f2c418%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body>
+<body class="writeup">
 
-<nav>
-  <div class="wrap">
-    <a class="logo" href="../index.html">m0vi0<span class="dot">_</span></a>
-    <div class="navlinks">
-      <a href="../index.html#work">All case files</a>
-    </div>
-  </div>
+<nav class="writeup-top" aria-label="Site">
+  <a class="back" href="../index.html#inventory">&larr; Back to the rack</a>
+  <span class="tape">Mervin Sequeira</span>
 </nav>
 
 <header class="article-header">
-  <div class="wrap">
-    <a class="back-link" href="../index.html#work">&larr; back to case files</a>
-    <div class="article-meta">
-      <span>CASE_003</span><span>·</span><span>2026</span><span>·</span><span>7 MIN READ</span>
-    </div>
-    <h1 class="article-title">Catching Deauth Floods: A Homemade WiFi IDS Feeding Wazuh</h1>
-    <div class="article-tags"><span>Kismet</span><span>Wazuh</span><span>Syslog</span><span>WIDS</span></div>
-  </div>
+  <p class="article-meta">2026 · 7 min read</p>
+  <h1 class="article-title">Catching deauth floods: a homemade WiFi IDS feeding Wazuh</h1>
+  <p class="article-dek">Kismet on a single-board computer, alerts forwarded over syslog into the SIEM I already run.</p>
+  <ul class="tags"><li>Kismet</li><li>Wazuh</li><li>Syslog</li><li>WIDS</li></ul>
 </header>
 
-<article class="article-body wrap">
+<main class="article-body">
 
   <p>
-    Many home networks lack visibility into local wireless activity. Deauthentication attacks — which force devices to disconnect so their reassociation can be captured — often go unnoticed by consumer routers. Because Wazuh was already deployed as the homelab SIEM, the objective for this project was practical: forward meaningful WiFi IDS alerts into the existing security pipeline so that detection becomes part of an operational workflow rather than an overlooked dashboard.
+    Most home networks have no visibility into local wireless activity. Deauthentication
+    attacks, which force devices to disconnect so their reassociation can be captured,
+    usually go unnoticed by consumer routers. I already ran Wazuh as my homelab SIEM, so
+    the goal was practical: forward meaningful WiFi IDS alerts into that pipeline, so
+    detection becomes part of a workflow instead of a dashboard nobody checks.
   </p>
 
   <h2>The setup</h2>
   <p>
-    A small single-board computer on the network was repurposed as a monitoring node running Kismet with a dedicated WiFi adapter in monitor mode. The node's role is purely detection: it listens for management frames and raises alerts when conditions match configured thresholds. Using a low-cost device keeps the monitoring footprint lightweight and easy to recover or replace.
+    I repurposed a small single-board computer on the network as a monitoring node running
+    Kismet, with a dedicated WiFi adapter in monitor mode. Its only job is detection: it
+    listens for management frames and raises alerts when they cross configured thresholds.
+    A low-cost device keeps the footprint small and easy to replace.
   </p>
 
   <h2>Kismet alerts and DEAUTHFLOOD</h2>
   <p>
-    Kismet includes an alert type for elevated rates of deauthentication frames (DEAUTHFLOOD). The alerting is rate-based per source to avoid firing on normal roaming or transient noise; the threshold is configurable so it can be matched against the expected behaviour of a given environment.
+    Kismet has an alert type for high rates of deauthentication frames (DEAUTHFLOOD). It's
+    rate-based per source, so normal roaming and transient noise don't trigger it, and the
+    threshold is configurable to match a given environment.
   </p>
 
   <h2>Forwarding alerts into Wazuh</h2>
   <p>
-    Kismet exposes recent alerts through its web endpoint. A lightweight poller watches the alerts feed, deduplicates by alert timestamp, and forwards each new alert into the local syslog. The Wazuh agent collects syslog entries and the SIEM is therefore able to ingest, correlate, and act on wireless events alongside the rest of the environment.
+    Kismet exposes recent alerts through its web endpoint. I wrote a lightweight poller
+    that watches that feed, deduplicates by alert timestamp, and writes each new alert to
+    the local syslog. The Wazuh agent collects syslog, so the SIEM ingests and correlates
+    wireless events alongside everything else.
   </p>
 
-  <h2>Wazuh decoding and rules</h2>
+  <h2>Wazuh decoder and rule</h2>
   <p>
-    To make Kismet alerts meaningful in Wazuh, a small custom decoder and rule were added to the local ruleset. The decoder matches the forwarded syslog tag and extracts the alert type and text; the rule fires on the DEAUTHFLOOD alert type and assigns an appropriate severity and description. This lets the SIEM treat those events like any other security telemetry and enables downstream actions such as notifications or ticketing.
+    To make the alerts meaningful in Wazuh, I added a small custom decoder and rule to the
+    local ruleset. The decoder matches the forwarded syslog tag and extracts the alert
+    type and text; the rule fires on DEAUTHFLOOD and sets a severity and description. Wazuh
+    then treats these like any other security telemetry, which opens up notifications or
+    ticketing downstream.
   </p>
 
-  <h2>Tuning and operational considerations</h2>
+  <h2>Tuning</h2>
   <p>
-    Wireless environments are noisy and what looks like an attack in one home may be normal behaviour in another. The DEAUTHFLOOD rate threshold should be verified against day-to-day baseline traffic and adjusted to avoid false positives. Additionally, deduplication in the poller and sensible rule levels in Wazuh help prevent alert storms. For production use, run the poller as a managed service and keep credentials in environment variables or a secrets store rather than hard-coding them.
+    Wireless environments are noisy, and what looks like an attack in one home can be
+    normal in another. I checked the DEAUTHFLOOD threshold against day-to-day baseline
+    traffic and adjusted it to cut false positives. Deduplication in the poller and sensible
+    rule levels in Wazuh keep alert storms down. For anything beyond a homelab, the poller
+    should run as a managed service with credentials in environment variables or a secrets
+    store, not hard-coded.
   </p>
 
-  <h2>Notifications and response</h2>
+  <h2>Notifications</h2>
   <p>
-    Alerts were routed through the existing mail relay so significant events produce an email notification. This ensures a human on-call or an incident response process sees the event rather than it remaining in an unattended dashboard. The mail path is intentionally simple so notification can reach responders quickly; more advanced integrations (webhooks, alert managers, or ticketing systems) are straightforward next steps.
+    Alerts go out through my existing mail relay, so a significant event produces an
+    email instead of sitting in an unattended dashboard. I kept the mail path simple on
+    purpose; webhooks, an alert manager or ticketing would be the next step.
   </p>
 
-  <div class="img-slot"></div>
-
-  <h2>Improvements and next steps</h2>
+  <h2>What I'd improve</h2>
   <p>
-    Polling the alerts feed is simple and reliable, but moving to an event-driven approach (for example, a persistent websocket subscription where supported) would reduce detection-to-notification latency and lower load. Longer term, correlating wireless alerts with other signals in the SIEM (DHCP logs, client posture, or network flows) can help place a deauth flood in context and reduce false positives.
+    Polling is simple and reliable, but an event-driven approach (a persistent websocket
+    subscription, where supported) would cut detection-to-notification latency and load.
+    Longer term, correlating wireless alerts with other signals in the SIEM, like DHCP logs,
+    client posture or network flows, would put a deauth flood in context and reduce false
+    positives further.
   </p>
 
-</article>
-</article>
+</main>
 
 <footer>
-  <div class="wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
-    <span>m0vi0 // mangaluru, in</span>
-    <a href="../index.html" style="color:inherit; text-decoration:none;">&larr; home</a>
-  </div>
+  <span>Mervin Sequeira · Mangaluru, India</span>
+  <a href="../index.html">&larr; Back to the rack</a>
 </footer>
 
 </body>
