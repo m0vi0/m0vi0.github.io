@@ -1,31 +1,44 @@
-// Strip the baked servers and shelves, drop branded textures, recolour RAL 7035, face the bay to +z. Usage: node prep-rack.mjs in.glb out.glb
+// Split the rack into frame + 9 server nodes (server_0 = top), face the bay to +z, shrink textures.
+// Usage: node prep-rack.mjs in.glb out.glb  (needs @gltf-transform/core, functions, extensions, sharp)
 import { NodeIO } from '@gltf-transform/core';
-import { prune, dedup, textureCompress, weld } from '@gltf-transform/functions';
-import sharp from 'sharp';
+import { prune, dedup, textureCompress } from '@gltf-transform/functions';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import sharp from 'sharp';
+
 const [src, out] = process.argv.slice(2);
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS), doc = await io.read(src);
-const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
-const pos = prim.getAttribute('POSITION').getArray(), idx = prim.getIndices();
-const a = idx.getArray();
-// connected parts by shared position; keep only the biggest (the frame)
-const n = pos.length/3, par = [...Array(n).keys()], f = x => par[x]===x?x:(par[x]=f(par[x]));
+const node = doc.getRoot().listNodes().find(n => n.getMesh());
+const prim = node.getMesh().listPrimitives()[0];
+const pos = prim.getAttribute('POSITION').getArray(), a = prim.getIndices().getArray();
+
+// connected parts by shared position (the servers are separate parts of the one mesh)
+const n = pos.length / 3, par = [...Array(n).keys()], f = x => par[x] === x ? x : (par[x] = f(par[x]));
 const seen = {};
-for (let i=0;i<n;i++){const k=[0,1,2].map(j=>pos[i*3+j].toFixed(4)).join(); if(k in seen) par[f(i)]=f(seen[k]); else seen[k]=i;}
-for (let t=0;t<a.length;t+=3){par[f(a[t+1])]=f(a[t]);par[f(a[t+2])]=f(a[t]);}
-const count = {}; for (let t=0;t<a.length;t+=3) count[f(a[t])]=(count[f(a[t])]||0)+1;
-const frame = +Object.entries(count).sort((x,y)=>y[1]-x[1])[0][0];
-// also drop the fixed shelves and bars inside the bay (|x|<0.27, between top and bottom rails), keep the back door (z>0.28)
-const c = (t,j) => (pos[a[t]*3+j]+pos[a[t+1]*3+j]+pos[a[t+2]*3+j])/3;
-const inBay = t => Math.abs(c(t,0))<0.27 && c(t,1)>-0.78 && c(t,1)<0.78 && c(t,2)<0.28;
-const keep = []; for (let t=0;t<a.length;t+=3) if (f(a[t])===frame && !inBay(t)) keep.push(a[t],a[t+1],a[t+2]);
-idx.setArray(new Uint32Array(keep));
-console.log('kept tris', keep.length/3, 'of', a.length/3);
-const m = doc.getRoot().listMaterials()[0];
-m.setBaseColorTexture(null).setBaseColorFactor([0.60, 0.63, 0.61, 1]) // ~#cbd0cc in sRGB, stored linear
- .setEmissiveTexture(null).setNormalTexture(null).setOcclusionTexture(null).setMetallicRoughnessTexture(null).setEmissiveFactor([0,0,0]).setRoughnessFactor(0.8).setMetallicFactor(0.15).setDoubleSided(true);
-// open side faces -z in the source; turn it to face +z
-doc.getRoot().listNodes().find(nd => nd.getMesh()).setRotation([0,1,0,0]); // parent rotations cancel out
-await doc.transform(prune(), dedup(), weld(),
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 82 }));
+for (let i = 0; i < n; i++) { const k = [0, 1, 2].map(j => pos[i * 3 + j].toFixed(4)).join(); if (k in seen) par[f(i)] = f(seen[k]); else seen[k] = i; }
+for (let t = 0; t < a.length; t += 3) { par[f(a[t + 1])] = f(a[t]); par[f(a[t + 2])] = f(a[t]); }
+const parts = {};
+for (let t = 0; t < a.length; t += 3) (parts[f(a[t])] ??= []).push(a[t], a[t + 1], a[t + 2]);
+const topY = tris => Math.max(...tris.map(v => pos[v * 3 + 1]));
+const list = Object.values(parts).sort((x, y) => y.length - x.length);
+const [frame, ...servers] = list;
+if (servers.length !== 9) throw new Error(`expected 9 servers, got ${servers.length}`);
+servers.sort((x, y) => topY(y) - topY(x));
+
+// one node per part, sharing the vertex buffers; prune drops nothing shared
+const parent = node.getParentNode() ?? doc.getRoot().listScenes()[0];
+const make = (name, tris) => {
+  const p = prim.clone().setIndices(doc.createAccessor().setType('SCALAR').setArray(new Uint32Array(tris)));
+  const nd = doc.createNode(name).setMesh(doc.createMesh(name).addPrimitive(p)).setRotation([0, 1, 0, 0]); // front was -z
+  parent.addChild(nd);
+};
+make('frame', frame);
+servers.forEach((s, i) => make(`server_${i}`, s));
+node.getMesh().dispose(); node.dispose();
+
+// colour maps are tiny, so keep 2048 for readable LCD text; lossy webp shifts roughness/metal and the servers turn shiny, so that map stays lossless
+await doc.transform(prune(), dedup(),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 90, slots: /baseColor|emissive/ }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 90, slots: /normal/ }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], lossless: true, slots: /metallicRoughness|occlusion/ }));
 await io.write(out, doc);
+console.log('frame', frame.length / 3, 'tris; servers', servers.map(s => s.length / 3).join(','));

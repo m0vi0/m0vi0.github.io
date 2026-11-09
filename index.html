@@ -3,136 +3,175 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mervin Sequeira — junior penetration tester</title>
+<title>Mervin Sequeira, junior penetration tester</title>
 <meta name="description" content="Mervin Sequeira, 2026 B.E. CSE graduate in Mangaluru looking for a junior penetration testing / VAPT role. I run my own detection stack and train on the offensive side.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Mervin Sequeira — junior penetration tester">
+<meta property="og:title" content="Mervin Sequeira, junior penetration tester">
 <meta property="og:description" content="Detection-aware pentester in training: Wazuh, Kismet and failover monitoring at home, HTB CPTS path on the offensive side.">
 <meta property="og:url" content="https://m0vi0.github.io/">
-<meta name="theme-color" content="#dcdfda">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23151515%22/%3E%3Crect x=%222%22 y=%226%22 width=%2212%22 height=%224%22 fill=%22%23f2c418%22/%3E%3C/svg%3E">
+<meta name="theme-color" content="#FFD400">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23FFD400%22/%3E%3Crect x=%224%22 y=%223%22 width=%228%22 height=%2210%22 fill=%22%230D0D0D%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="assets/style.css">
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+  "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/dist/esm/simplex-noise.js"
 } }
 </script>
 <script type="module" src="assets/rack.js"></script>
+<script type="module" src="assets/waves.js"></script>
+<script type="module" src="assets/evervault.js"></script>
 </head>
 <body>
 
-<header class="wall">
-  <div class="ident">
-    <h1><span class="tape">Mervin Sequeira</span></h1>
-    <p class="role"><span class="tape tape-yellow">Junior penetration tester · VAPT</span></p>
-    <p class="pitch">
-      I run my own detection stack (Wazuh, Kismet and failover monitoring) and I'm
-      training on the offensive side through the Hack The Box CPTS path. I want to test
-      systems knowing what the defender sees. 2026 B.E. CSE (AI &amp; ML) graduate, Mangaluru, India.
-    </p>
-    <div class="actions">
-      <a class="btn" href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf">Download resume (PDF)</a>
-      <a class="btn btn-quiet" href="mailto:mervinsequeira485@gmail.com">Email me</a>
-    </div>
-    <p class="hint">Pull a unit out of the rack to open it, or read the <a href="#inventory">inventory</a>.</p>
-  </div>
-  <div class="stage" aria-hidden="true">
-    <canvas id="rack3d"></canvas>
-    <div class="rack-tip" hidden></div>
-  </div>
+<header class="nav">
+  <a class="mark" href="#top" aria-label="Mervin Sequeira, top of page">MS</a>
+  <nav aria-label="Sections">
+    <a href="#projects">Projects</a>
+    <a href="#skills">Skills</a>
+    <a href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf">Resume</a>
+    <a href="#contact">Contact</a>
+  </nav>
 </header>
 
 <main>
-  <section id="inventory" aria-labelledby="inventory-title">
-    <h2 id="inventory-title"><span class="tape">Rack inventory</span></h2>
-    <p class="legend">
-      <span class="led led-done"></span> running
-      <span class="led led-wip"></span> in progress
-    </p>
+  <div class="scan">
+  <section class="hero" id="top">
+    <canvas class="waves" aria-hidden="true"></canvas>
+    <h1 class="wordmark"><span class="first">Mervin</span> <span class="last">Sequeira</span></h1>
 
-    <ol class="rack">
-      <li class="unit" data-kind="resume" data-u="1" data-tape="Resume" data-status="done">
-        <span class="u">U19</span>
-        <div class="plate">
-          <h3><a href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf"><span class="tape">Resume</span></a></h3>
-          <p>One page, PDF. Contact details, lab work, projects and training.</p>
-        </div>
-      </li>
+    <div class="stage" aria-hidden="true">
+      <canvas id="rack3d"></canvas>
+      <div class="rack-tip" hidden></div>
+    </div>
 
-      <li class="unit" data-kind="project" data-u="2" data-tape="Tailscale failover" data-status="done">
-        <span class="u">U17–18</span>
-        <div class="plate">
-          <h3><a href="writeups/tailscale-failover.html"><span class="tape">Tailscale failover</span></a></h3>
-          <p>I had no admin access to my router, so I built remote access and monitoring around it:
-             Tailscale subnet routing with automatic failover, and monitoring nodes that watch each other.</p>
-          <ul class="tags"><li>Tailscale</li><li>Uptime Kuma</li><li>Wazuh</li><li>Failover</li></ul>
-        </div>
-      </li>
+    <div class="hero-copy">
+      <p class="tagline">Junior penetration tester · VAPT</p>
+      <p class="pitch">
+        I run my own detection stack (Wazuh, Kismet and failover monitoring) and I'm training
+        on the offensive side through the Hack The Box CPTS path. 2026 B.E. CSE (AI &amp; ML)
+        graduate, Mangaluru, India.
+      </p>
+      <div class="actions">
+        <a class="btn" href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf">Download resume</a>
+        <a class="link" href="#projects">Projects</a>
+      </div>
+      <p class="hint">Click a server in the rack to open it.</p>
+    </div>
 
-      <li class="unit" data-kind="project" data-u="2" data-tape="Deauth → Wazuh" data-status="done">
-        <span class="u">U15–16</span>
-        <div class="plate">
-          <h3><a href="writeups/deauth-wazuh.html"><span class="tape">Deauth → Wazuh</span></a></h3>
-          <p>I run Kismet on a Raspberry Pi as a WiFi intrusion detector and forward deauth-flood alerts
-             to Wazuh over syslog. Custom rules and threshold tuning cut false positives by about 40%.</p>
-          <ul class="tags"><li>Kismet</li><li>Wazuh</li><li>Syslog</li><li>WIDS</li></ul>
-        </div>
-      </li>
+    <p class="counter" aria-hidden="true"><b id="count">09</b> / 09 <span id="count-label">servers</span></p>
+    <div class="scroll-cue" aria-hidden="true"><span></span></div>
 
-      <li class="unit" data-kind="project" data-u="2" data-tape="PacMap" data-status="done">
-        <span class="u">U13–14</span>
-        <div class="plate">
-          <h3><a href="writeups/pacmap.html"><span class="tape">PacMap</span></a></h3>
-          <p>I built a graph-first network traffic visualizer for live capture and PCAP replay, with
-             checkpoints and diffs of network state. Source on <a class="inline" href="https://github.com/m0vi0/pacmap">GitHub</a>.</p>
-          <ul class="tags"><li>Python</li><li>Scapy</li><li>Three.js</li><li>WebSocket</li></ul>
-        </div>
-      </li>
-
-      <li class="unit" data-kind="ports" data-u="2" data-tape="Skills" data-status="done">
-        <span class="u">U10–11</span>
-        <div class="plate">
-          <h3><span class="tape">Skills patch panel</span></h3>
-          <p>Each port is wired to where you can check it.</p>
-          <ul class="ports">
-            <li data-status="done"><a href="writeups/deauth-wazuh.html" data-tape="Wazuh SIEM">Wazuh SIEM: manager + 2 agents (Pi 3B+, HP laptop)</a></li>
-            <li data-status="done"><a href="writeups/deauth-wazuh.html" data-tape="Detection rules">Detection rules: Kismet deauth, ~40% fewer false positives</a></li>
-            <li data-status="done"><a href="writeups/tailscale-failover.html" data-tape="Monitoring">Monitoring: Tailscale failover, Uptime Kuma, Netdata</a></li>
-            <li data-status="done"><a href="https://github.com/m0vi0/pacmap" data-tape="Packet analysis">Packet analysis: Scapy, PacMap source</a></li>
-            <li data-status="done"><a href="assets/resume.pdf" data-tape="Nmap enum">Network enumeration with Nmap, footprinting: CPTS modules done (resume)</a></li>
-            <li data-status="wip"><a href="assets/resume.pdf" data-tape="Web exploitation">Web exploitation: PortSwigger labs: access control, request manipulation, SSRF (resume)</a></li>
-            <li data-status="wip"><a href="assets/resume.pdf" data-tape="Shells / pivoting">Shells &amp; payloads, pivoting, privilege escalation: CPTS, in progress (resume)</a></li>
-            <li data-status="wip"><a href="assets/resume.pdf" data-tape="Bug bounty recon">Bug bounty recon on Bugcrowd: subfinder, ffuf (resume)</a></li>
-            <li data-status="done"><span data-tape="HTB Season 11">Hack The Box Season 11: Connected, DevHub, Reactor</span></li>
-            <li data-status="wip"><a href="assets/resume.pdf" data-tape="Network+">CompTIA Network+: in progress (resume)</a></li>
-          </ul>
-        </div>
-      </li>
-
-      <li class="unit" data-kind="contact" data-u="1" data-tape="Contact" data-status="done">
-        <span class="u">U9</span>
-        <div class="plate">
-          <h3><span class="tape">Contact</span></h3>
-          <p>Hiring for a junior pentest or VAPT role? I'd like to hear from you.</p>
-          <ul class="ports">
-            <li data-status="done"><a href="mailto:mervinsequeira485@gmail.com" data-tape="Email">mervinsequeira485@gmail.com</a></li>
-            <li data-status="done"><a href="https://www.linkedin.com/in/mervin-sequeira-438a033b1/" data-tape="LinkedIn">LinkedIn</a></li>
-            <li data-status="done"><a href="https://github.com/m0vi0" data-tape="GitHub">GitHub</a></li>
-          </ul>
-        </div>
-      </li>
+    <!-- one item per server in the 3D rack, top to bottom; rack.js draws each one's faceplate label from this list -->
+    <ol class="rack" hidden>
+      <li data-label="About" data-title="Junior pentester" data-line="Detection stack at home, offense on the HTB CPTS path." data-tags="B.E. CSE (AI &amp; ML) 2026|Mangaluru, India|Open to work" data-cta="Resume →"><a href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf">Resume</a></li>
+      <li data-label="Tailscale failover" data-title="Tailscale failover" data-line="Remote access and failover without router admin." data-tags="Tailscale|Uptime Kuma|Wazuh|Failover" data-cta="Read writeup →" data-volt="pink"><a href="writeups/tailscale-failover.html">Tailscale failover</a></li>
+      <li data-label="Deauth → Wazuh" data-title="Deauth → Wazuh" data-line="Pi WIDS alerts in Wazuh, ~40% fewer false positives." data-tags="Kismet|Wazuh|Syslog|WIDS" data-cta="Read writeup →" data-volt="lime"><a href="writeups/deauth-wazuh.html">Deauth → Wazuh</a></li>
+      <li data-label="PacMap" data-title="PacMap" data-line="Graph-first traffic visualizer: live capture, PCAP replay." data-tags="Python|Scapy|Three.js|WebSocket" data-cta="Read writeup →" data-volt="blue"><a href="writeups/pacmap.html">PacMap</a></li>
+      <li data-label="Skills · defense" data-title="Skills · defense" data-items="Wazuh SIEM:running|Detection rules:running|Monitoring:running|Packet analysis:running|Network enum:done"></li>
+      <li data-label="Skills · offense" data-title="Skills · offense" data-items="HTB Season 11:done|Web exploitation:in progress|Shells and privesc:in progress|Bug bounty recon:in progress|CompTIA Network+:in progress"></li>
+      <li data-label="Resume" data-title="Resume" data-line="Projects, labs and education on one page." data-tags="PDF" data-cta="Download →"><a href="assets/resume.pdf" download="Mervin_Sequeira_Resume.pdf">Resume</a></li>
+      <li data-label="Email" data-title="Hire a junior pentester" data-line="mervinsequeira485@gmail.com" data-cta="Email →"><a href="mailto:mervinsequeira485@gmail.com">Email</a></li>
+      <li data-label="LinkedIn · GitHub"><a href="https://www.linkedin.com/in/mervin-sequeira-438a033b1/" data-line="in/mervin-sequeira">LinkedIn</a><a href="https://github.com/m0vi0" data-line="github.com/m0vi0">GitHub</a></li>
     </ol>
+  </section>
+  <!-- scroll stops: hero, name plate, 9 servers, pull-back; rack.js maps scroll to the camera -->
+  <div class="stops" aria-hidden="true"><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span></div>
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Wazuh SIEM</span><i>✦</i><span>Kismet WIDS</span><i>✦</i><span>Tailscale</span><i>✦</i><span>Nmap</span><i>✦</i><span>Scapy</span><i>✦</i><span>PortSwigger labs</span><i>✦</i><span>HTB CPTS</span><i>✦</i><span>Bug bounty recon</span><i>✦</i>
+      <span>Wazuh SIEM</span><i>✦</i><span>Kismet WIDS</span><i>✦</i><span>Tailscale</span><i>✦</i><span>Nmap</span><i>✦</i><span>Scapy</span><i>✦</i><span>PortSwigger labs</span><i>✦</i><span>HTB CPTS</span><i>✦</i><span>Bug bounty recon</span><i>✦</i>
+    </div>
+  </div>
+
+  <section id="projects" class="section" aria-labelledby="projects-title">
+    <h2 id="projects-title" class="section-title">Projects</h2>
+
+    <article class="drop" style="--volt: var(--pink)" data-unit="1">
+      <span class="num" aria-hidden="true">01</span>
+      <div class="drop-body">
+        <h3><a href="writeups/tailscale-failover.html">Tailscale failover</a></h3>
+        <p>I had no admin access to my router, so I built remote access and monitoring around it:
+           Tailscale subnet routing with automatic failover, and monitoring nodes that watch each other.</p>
+        <ul class="chips"><li>Tailscale</li><li>Uptime Kuma</li><li>Wazuh</li><li>Failover</li></ul>
+      </div>
+      <a class="drop-panel" href="writeups/tailscale-failover.html" tabindex="-1" aria-hidden="true">
+        <span class="panel-big">No router admin needed</span>
+        <span class="panel-cta">Read writeup →</span>
+      </a>
+    </article>
+
+    <article class="drop" style="--volt: var(--lime)" data-unit="2">
+      <span class="num" aria-hidden="true">02</span>
+      <div class="drop-body">
+        <h3><a href="writeups/deauth-wazuh.html">Deauth → Wazuh</a></h3>
+        <p>I run Kismet on a Raspberry Pi as a WiFi intrusion detector and forward deauth-flood alerts
+           to Wazuh over syslog. Custom rules and threshold tuning cut false positives by about 40%.</p>
+        <ul class="chips"><li>Kismet</li><li>Wazuh</li><li>Syslog</li><li>WIDS</li></ul>
+      </div>
+      <a class="drop-panel" href="writeups/deauth-wazuh.html" tabindex="-1" aria-hidden="true">
+        <span class="panel-big">~40% fewer false positives</span>
+        <span class="panel-cta">Read writeup →</span>
+      </a>
+    </article>
+
+    <article class="drop" style="--volt: var(--blue)" data-unit="3">
+      <span class="num" aria-hidden="true">03</span>
+      <div class="drop-body">
+        <h3><a href="writeups/pacmap.html">PacMap</a></h3>
+        <p>I built a graph-first network traffic visualizer for live capture and PCAP replay, with
+           checkpoints and diffs of network state. Source on <a href="https://github.com/m0vi0/pacmap">GitHub</a>.</p>
+        <ul class="chips"><li>Python</li><li>Scapy</li><li>Three.js</li><li>WebSocket</li></ul>
+      </div>
+      <a class="drop-panel has-media" href="writeups/pacmap.html" tabindex="-1" aria-hidden="true">
+        <video src="assets/demo.mp4#t=1" muted playsinline preload="metadata"></video>
+        <span class="panel-cta">Read writeup →</span>
+      </a>
+    </article>
+  </section>
+
+  <section id="skills" class="section" aria-labelledby="skills-title">
+    <h2 id="skills-title" class="section-title">Skills</h2>
+    <ul class="skills">
+      <li data-status="done" data-unit="4"><a href="writeups/deauth-wazuh.html">Wazuh SIEM</a><span>Manager + 2 agents (Pi 3B+, HP laptop)</span><em>running</em></li>
+      <li data-status="done" data-unit="4"><a href="writeups/deauth-wazuh.html">Detection rules</a><span>Kismet deauth, ~40% fewer false positives</span><em>running</em></li>
+      <li data-status="done" data-unit="4"><a href="writeups/tailscale-failover.html">Monitoring</a><span>Tailscale failover, Uptime Kuma, Netdata</span><em>running</em></li>
+      <li data-status="done" data-unit="4"><a href="https://github.com/m0vi0/pacmap">Packet analysis</a><span>Scapy, PacMap source</span><em>running</em></li>
+      <li data-status="done" data-unit="4"><a href="assets/resume.pdf">Network enumeration</a><span>Nmap and footprinting, CPTS modules done</span><em>done</em></li>
+      <li data-status="done" data-unit="5"><a href="assets/resume.pdf">Hack The Box Season 11</a><span>Connected, DevHub, Reactor</span><em>done</em></li>
+      <li data-status="wip" data-unit="5"><a href="assets/resume.pdf">Web exploitation</a><span>PortSwigger labs: access control, request manipulation, SSRF</span><em>in progress</em></li>
+      <li data-status="wip" data-unit="5"><a href="assets/resume.pdf">Shells, pivoting, privesc</a><span>CPTS path</span><em>in progress</em></li>
+      <li data-status="wip" data-unit="5"><a href="assets/resume.pdf">Bug bounty recon</a><span>Bugcrowd: subfinder, ffuf</span><em>in progress</em></li>
+      <li data-status="wip" data-unit="5"><a href="assets/resume.pdf">CompTIA Network+</a><span>Studying</span><em>in progress</em></li>
+    </ul>
+  </section>
+
+  <section id="contact" class="cta" aria-labelledby="contact-title">
+    <h2 id="contact-title" class="cta-words">
+      <span class="w1">Hire</span> <span class="w2">a</span> <span class="w3">junior</span> <span class="w4">pentester</span>
+    </h2>
+    <a class="sticker" data-unit="7" href="mailto:mervinsequeira485@gmail.com"><span>Email me →</span></a>
+    <p class="cta-links">
+      <a class="link" data-unit="8" href="https://www.linkedin.com/in/mervin-sequeira-438a033b1/">LinkedIn</a>
+      <a class="link" data-unit="8" href="https://github.com/m0vi0">GitHub</a>
+      <a class="link" data-unit="7" href="mailto:mervinsequeira485@gmail.com">mervinsequeira485@gmail.com</a>
+    </p>
   </section>
 </main>
 
-<footer>
-  <span>Mervin Sequeira · Mangaluru, India</span>
-  <span>Rack model “<a href="https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218">Server Rack</a>” by Spellkaze,
-    <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, recoloured and emptied.</span>
+<footer class="footer">
+  <div class="ever" aria-hidden="true"><p class="ever-chars"></p></div>
+  <p class="colophon">
+    <span>Mervin Sequeira · Mangaluru, India · <a href="mailto:mervinsequeira485@gmail.com">mervinsequeira485@gmail.com</a></span>
+    <span>Rack model “<a href="https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218">Server Rack</a>” by Spellkaze,
+      <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</span>
+  </p>
 </footer>
 
 </body>
