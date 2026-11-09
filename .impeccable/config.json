@@ -4,22 +4,25 @@
     "ignoreFiles": [],
     "ignoreValues": [
       {
-        "rule": "side-tab",
+        "rule": "overused-font",
+        "value": "space grotesk",
+        "createdAt": "2026-11-09T07:53:40.112Z"
+      },
+      {
+        "rule": "organic-clip-path",
         "value": "*",
         "files": [
           "assets/style.css"
         ],
-        "createdAt": "2026-11-09T07:19:35.437Z",
-        "reason": "model decision: .rack draws two equal 6px rack posts (left+right), a literal server-rack rail, not a one-sided accent"
+        "createdAt": "2026-11-09T07:53:40.133Z"
       },
       {
-        "rule": "cramped-padding",
+        "rule": "flat-type-hierarchy",
         "value": "*",
         "files": [
           "index.html"
         ],
-        "createdAt": "2026-11-09T07:19:35.480Z",
-        "reason": "model decision: .rack units sit flush between the rack posts on purpose, like real rack-mounted gear; each .plate has its own padding"
+        "createdAt": "2026-11-09T07:53:40.154Z"
       }
     ]
   }
