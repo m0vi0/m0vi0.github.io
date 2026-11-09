@@ -3,114 +3,101 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Resilient home network with automatic failover — m0vi0</title>
+<title>Resilient home network with automatic failover — Mervin Sequeira</title>
+<meta name="description" content="Remote access and monitoring built around a router I had no admin access to.">
+<meta name="theme-color" content="#f3f3ee">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23151515%22/%3E%3Crect x=%222%22 y=%226%22 width=%2212%22 height=%224%22 fill=%22%23f2c418%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=JetBrains+Mono:wght@500&display=swap">
 <link rel="stylesheet" href="../assets/style.css">
 </head>
-<body>
+<body class="writeup">
 
-<nav>
-  <div class="wrap">
-    <a class="logo" href="../index.html">m0vi0<span class="dot">_</span></a>
-    <div class="navlinks">
-      <a href="../index.html#work">All case files</a>
-    </div>
-  </div>
+<nav class="writeup-top" aria-label="Site">
+  <a class="back" href="../index.html#inventory">&larr; Back to the rack</a>
+  <span class="tape">Mervin Sequeira</span>
 </nav>
 
 <header class="article-header">
-  <div class="wrap">
-    <a class="back-link" href="../index.html#work">&larr; back to case files</a>
-    <div class="article-meta">
-      <span>CASE_004</span><span>·</span><span>2026</span><span>·</span><span>6 MIN READ</span>
-    </div>
-    <h1 class="article-title">Resilient home network with automatic failover</h1>
-    <div class="article-tags"><span>Tailscale</span><span>Uptime Kuma</span><span>Wazuh</span><span>Failover</span></div>
-  </div>
+  <p class="article-meta">2026 · 6 min read</p>
+  <h1 class="article-title">Resilient home network with automatic failover</h1>
+  <p class="article-dek">Remote access and monitoring built around a router I had no admin access to.</p>
+  <ul class="tags"><li>Tailscale</li><li>Uptime Kuma</li><li>Wazuh</li><li>Failover</li></ul>
 </header>
 
-<article class="article-body wrap">
+<main class="article-body">
 
   <p>
-    The project started from a practical constraint: there was no administrative
-    access to the home router. Without router-level control (port forwarding or
-    VLANs), remote access and monitoring needed to be implemented without
-    modifying the network infrastructure itself.
+    This started from a practical constraint: I had no admin access to the home router.
+    Without router-level control (port forwarding or VLANs), I had to build remote access
+    and monitoring without touching the network infrastructure itself.
   </p>
 
   <h2>Initial approach</h2>
   <p>
-    The first step was to place individual devices on a mesh VPN so they could
-    be reached remotely without touching the router. Tailscale was selected for
-    its low-friction WireGuard-based overlay: it quickly creates encrypted
-    connectivity between nodes and removes the need for router configuration
-    changes for basic remote access.
+    First I put individual devices on a mesh VPN so I could reach them remotely without
+    touching the router. I picked Tailscale for its low-friction WireGuard-based overlay:
+    it creates encrypted connectivity between nodes quickly and needs no router changes
+    for basic remote access.
   </p>
 
-  <h2>Subnet routing for non‑client devices</h2>
+  <h2>Subnet routing for devices that can't run a client</h2>
   <p>
-    Many home devices (smart home appliances, cameras, embedded controllers)
-    cannot run a VPN client. To make those reachable, a subnet router approach
-    was used: one or more machines on the LAN advertise routes into the tailnet
-    so clients on the tailnet can reach devices on the LAN without direct
-    access. This preserves reachability while avoiding changes at the physical
-    router.
+    Many home devices (smart home appliances, cameras, embedded controllers) can't run a
+    VPN client. To reach those, I used subnet routing: one or more machines on the LAN
+    advertise routes into the tailnet, so tailnet clients can reach LAN devices without
+    direct access. Reachability stays intact and the physical router stays untouched.
   </p>
 
-  <h2>Eliminating single points of failure</h2>
+  <h2>Removing the single point of failure</h2>
   <p>
-    A single subnet router is a single point of failure. To avoid losing remote
-    access when one node goes down, multiple nodes were configured to advertise
-    the same routes. Tailscale handles automatic failover between advertising
-    nodes so the tailnet continues to reach the LAN via an available subnet
-    router.
+    One subnet router is a single point of failure. So that I don't lose remote access
+    when a node goes down, I configured several nodes to advertise the same routes.
+    Tailscale fails over between them automatically, and the tailnet keeps reaching the
+    LAN through whichever subnet router is up.
   </p>
 
   <h2>Monitoring the monitors</h2>
   <p>
-    Redundancy in routing only helps when someone notices a failure. To avoid
-    creating a monitoring single point of failure, two monitoring instances
-    were deployed (Uptime Kuma). Each monitor checks the set of subnet routers
-    and also watches the other monitor, creating a cross-check that reduces the
-    chance of blind spots in monitoring.
+    Redundant routing only helps if someone notices a failure. To avoid making the
+    monitoring itself a single point of failure, I run two Uptime Kuma instances. Each
+    one checks the subnet routers and also watches the other monitor, so a blind spot
+    in one gets caught by the other.
   </p>
 
-  <h2>Security monitoring and integration</h2>
+  <h2>Security monitoring on top</h2>
   <p>
-    Once the access layer was resilient, security monitoring was layered on
-    top. Wazuh was deployed across the router nodes to collect host telemetry
-    and correlate events. A Kismet instance on one node provides wireless
-    detection and forwards deauth alerts into Wazuh (via syslog), while an
-    object-detection camera (Frigate) provides physical detection signals. The
-    goal was to make remote access and monitoring mutually reinforcing rather
-    than creating separate fragile systems.
+    Once the access layer was resilient, I layered security monitoring on top. Wazuh
+    runs across the router nodes to collect host telemetry and correlate events. A Kismet
+    instance on one node does wireless detection and forwards deauth alerts into Wazuh
+    over syslog (<a href="deauth-wazuh.html">writeup</a>), and an object-detection camera
+    (Frigate) adds physical detection signals. The goal was for remote access and
+    monitoring to reinforce each other instead of being separate fragile systems.
   </p>
 
-  <h2>Operational notes and limitations</h2>
+  <h2>Operational notes and limits</h2>
   <p>
-    The approach works well when multiple reliable nodes are available, but it
-    does add operational complexity (route approval in the Tailscale admin
-    console, keeping subnet routers patched and online, and ensuring monitors
-    remain reachable). Where router admin access is available, integrating
-    required routing changes at the router level can be simpler; this design
-    is a practical workaround when that access is not possible.
+    This works well when there are several reliable nodes, but it adds operational
+    work: approving routes in the Tailscale admin console, keeping subnet routers patched
+    and online, and making sure the monitors stay reachable. With router admin access,
+    doing the routing at the router would be simpler. This design is a workaround for
+    when that access isn't available.
   </p>
 
-  <h2>Lessons learned</h2>
+  <h2>What I learned</h2>
   <p>
-    Building redundancy early and testing failover behaviour proves valuable:
-    automated failover is only useful if it is exercised and monitored. When
-    designing resilient systems, map failure modes across routing, monitoring,
-    alerting, and response so remediations don't unintentionally introduce new
-    blind spots.
+    Build redundancy early and test failover: automatic failover is only useful if it's
+    exercised and monitored. When I design for resilience now, I map failure modes across
+    routing, monitoring, alerting and response, so a fix in one place doesn't open a
+    blind spot in another.
   </p>
 
-</article>
+</main>
 
 <footer>
-  <div class="wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
-    <span>m0vi0 // mangaluru, in</span>
-    <a href="../index.html" style="color:inherit; text-decoration:none;">&larr; home</a>
-  </div>
+  <span>Mervin Sequeira · Mangaluru, India</span>
+  <a href="../index.html">&larr; Back to the rack</a>
 </footer>
 
 </body>
