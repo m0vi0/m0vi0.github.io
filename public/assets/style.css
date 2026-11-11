@@ -331,7 +331,10 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   /* iOS plays sound only from a tap inside the Spotify frame itself: at the shelf its bar shows, under the covers */
   .stage[data-view="shelf"] .spotify-host { position: absolute; left: 1rem; right: 1rem; bottom: 1rem; width: auto; z-index: 6; opacity: 1; pointer-events: auto; }
   .stage[data-view="shelf"] .phone-ui, .stage[data-view="box"] .phone-ui { position: absolute; z-index: 6; left: 0; right: 0; bottom: 1rem; display: grid; gap: .6rem; padding-bottom: env(safe-area-inset-bottom); }
-  .stage[data-view="shelf"] .phone-ui { bottom: calc(1rem + 80px + .6rem); }   /* above the Spotify bar */
+  /* one player: Spotify's own bar beside Back (its ▶/⏸ is the only control), the covers above them */
+  .stage[data-view="shelf"] .spotify-host { left: calc(1rem + 80px + .5rem); }
+  .stage[data-view="shelf"] :is(.now-line, .phone-stop) { display: none; }
+  .stage[data-view="shelf"] .phone-bar { width: fit-content; height: 80px; padding: 18px; box-sizing: border-box; }
   .stage[data-view="box"] :is(.covers, .now-line, .phone-stop) { display: none; }
   .covers { display: flex; gap: .5rem; overflow-x: auto; padding: .4rem 1rem; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .covers button { flex: 0 0 72px; height: 72px; padding: 0; border: 2px solid transparent; background: #222 center / cover; scroll-snap-align: start; cursor: pointer; }
