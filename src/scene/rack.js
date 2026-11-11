@@ -48,8 +48,9 @@ async function start() {
 
   const scan = document.querySelector('.scan'), hero = scan?.querySelector('.hero');
   const scanOn = !reduce && !!scan;                          // the faceplates draw differently in scan mode
+  const files = roomFiles();                                 // the room's downloads start now, alongside the rack's
   const { rackRoot, units, frameMesh, blink, top: rackTopY } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn);
-  const room = await buildRoom(renderer, new THREE.Box3().setFromObject(rackRoot));
+  const room = await buildRoom(renderer, new THREE.Box3().setFromObject(rackRoot), files);
   // the room and the rack ride one lift: on load it rises from below, turning, and settles past its mark (stepRise).
   // lift turns about the room's middle; inner puts the rack back at the origin, so poses and picking are untouched once it settles
   const lift = new THREE.Group(), inner = new THREE.Group().add(rackRoot);
@@ -434,7 +435,7 @@ async function start() {
     }
     if (choosing()) { const w = which(ev); if (w) choose(w); else if (sCur > .5 && !ray.intersectObject(room.root, true)[0]) flyTo(0); return; }   // the page behind the room: back to the landing
     if (Math.abs(sCur - BOX) < .5) {                       // the showcase: the Badminton brush opens SmashBid (its label is the link); the background steps back
-      if (ray.intersectObject(room.star, true)[0]) tips.star.click(); else if (!ray.intersectObject(room.art, true)[0]) leave();
+      if (room.star && ray.intersectObject(room.star, true)[0]) tips.star.click(); else if (!ray.intersectObject(room.art, true)[0]) leave();
       return;
     }
     const { u, rack, hit, x, y } = pick(ev);
@@ -739,6 +740,7 @@ async function start() {
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(stage);
   document.addEventListener('visibilitychange', wake);
   function wake() { if (!running && visible && !document.hidden) { running = true; last = performance.now(); renderer.setAnimationLoop(tick); } }
+  if (room) room.arrived = wake;                             // a late prop: one more frame, with its shadow
   function tick(now) {
     const dt = Math.min(Math.max((now - last) / 1000, 0), .05) / SLOW; last = now;   // rAF time can trail performance.now()
     renderer.shadowMap.needsUpdate = true;
@@ -822,12 +824,12 @@ async function start() {
       const atClose = near(1) || near(STOPS - 1);
       label(tips.rack, atClose, rackTop); label(tips.box, atClose, room.boxFoot); label(tips.vinyl, atClose, room.vinyl.tipAt);
       const starOn = near(BOX) || starHot;
-      if (starOn) {                                         // above the brush as the camera sees it (from overhead, that is its far side, not its highest point)
+      if (starOn && room.star) {                            // above the brush as the camera sees it (from overhead, that is its far side, not its highest point)
         rackBox.setFromObject(room.star).getCenter(starTop).project(camera); starTop.y = -1;
         for (let i = 0; i < 8; i++) starTop.y = Math.max(starTop.y, corner.set(rackBox[i & 1 ? 'max' : 'min'].x, rackBox[i & 2 ? 'max' : 'min'].y, rackBox[i & 4 ? 'max' : 'min'].z).project(camera).y);
         starTop.unproject(camera);
       }
-      label(tips.star, starOn, starTop);
+      label(tips.star, starOn && !!room.star, starTop);
       label(tips.window, winHot && choosing() && !rise && !portal, room.winTop);   // last, so it moves below a label it would cover
     }
   }
@@ -900,16 +902,22 @@ function paintSky(cv, e, rising) {
   }
   cx.globalAlpha = 1;
 }
-async function buildRoom(renderer, rack) {
+// the room's files: what it needs to rise (main), and the box's contents (later), which join it as they arrive, so the slow brushes hold nothing up
+function roomFiles() {
+  const libs = Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'),
+    import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]);
+  const glb = f => libs.then(([{ GLTFLoader }, { DRACOLoader }]) => (glb.loader ??= new GLTFLoader().setDRACOLoader(new DRACOLoader()
+    .setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/libs/draco/gltf/'))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
+  const json = f => fetch(new URL(f, ASSETS)).then(r => r.json());
+  return { libs, main: Promise.all([json('art-layout.json'), json('record-layout.json') /* scripts/settle-records.py */, json('data/top-tracks.json') /* scripts/fetch-spotify.mjs */,
+      ...['clock', 'lamp', 'box'].map(glb)]),   // the clock and lamp hold lights and hands, and the box places the rest
+    later: () => ['cup', 'spraycan', 'tube', 'paintbrush-1', 'paintbrush-2', 'paintbrush-3'].map(glb) };   // called once the room is up, so they don't slow it
+}
+async function buildRoom(renderer, rack, files) {
   const XL = rack.min.x - .18, X1 = XL + ROOM;                // the left wall 18 cm off the rack's side
-  const [{ GLTFLoader }, { DRACOLoader }, { RoomEnvironment }, { RectAreaLightUniformsLib }] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'),
-    import('three/addons/loaders/DRACOLoader.js'), import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]);
+  const [, , { RoomEnvironment }, { RectAreaLightUniformsLib }] = await files.libs;
   RectAreaLightUniformsLib.init();                           // the floor's bounce lights (see bounce())
-  const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/libs/draco/gltf/'));
-  const [layout, recLayout, { tracks }, clock, deskLamp, box, cup, can, tube, ...brushes] = await Promise.all([fetch(new URL('art-layout.json', ASSETS)).then(r => r.json()),
-    fetch(new URL('record-layout.json', ASSETS)).then(r => r.json()),   // scripts/settle-records.py
-    fetch(new URL('data/top-tracks.json', ASSETS)).then(r => r.json()),   // scripts/fetch-spotify.mjs
-    ...['clock', 'lamp', 'box', 'cup', 'spraycan', 'tube', 'paintbrush-1', 'paintbrush-2', 'paintbrush-3'].map(f => loader.loadAsync(new URL(`${f}.glb`, ASSETS).href).then(g => g.scene))]);
+  const [layout, recLayout, { tracks }, clock, deskLamp, box] = await files.main;
 
   // white marble on the floor; the walls painted white (see WALL), so the things in the room do the talking
   const tl = new THREE.TextureLoader(), texLoads = [];        // the room rises only once these are in: an untextured floor shows brown under the lamp
@@ -946,19 +954,10 @@ async function buildRoom(renderer, rack) {
     const b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3());
     o.position.x += x - c.x; o.position.y += y - b.min.y; o.position.z += z - c.z;
   };
-  cup.traverse(o => { if (o.isMesh) { o.material.map = null; o.material.color.set('#f2efe8'); } });   // plain white: the scan carries a noodle brand's print
   const art = new THREE.Group().add(box);
   box.scale.setScalar(BOX_SCALE);
   put(box, XL + ROOM / 2, -1, Z0 + .17);                     // its 40 cm side along the back wall (the folded flaps stand 1 cm off it), halfway along it
-  // the contents where Blender's rigid-body physics left them (scripts/settle-art.py -> art-layout.json), in the box glb's own frame
-  const tube2 = tube.clone();
-  const settled = { cup, spraycan: can, tube, 'tube-2': tube2, 'paintbrush-1': brushes[0], 'paintbrush-2': brushes[1], 'paintbrush-3': brushes[2] };
-  for (const [k, o] of Object.entries(settled)) { o.quaternion.set(...layout[k].q); o.position.set(...layout[k].p).add(box.position); art.add(o); }
-  const tools = [tube, tube2, ...brushes, can];              // what hops when the box is clicked
-  for (const o of tools) {                                   // each with its own materials (the two tubes share theirs), so one can brighten alone
-    o.userData.p0 = o.position.clone(); o.userData.up = new THREE.Vector3(0, 1, 0).applyQuaternion(o.quaternion); o.userData.mats = [];
-    o.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); o.userData.mats.push(m.material); } });
-  }
+  const tools = [];                                          // what hops when the box is clicked: filled as the contents arrive (see the end)
 
   // the window: a painted frame and sash, thin glass, and a sky outside it (see paintSky())
   const win = new THREE.Group(), trimM = new THREE.MeshStandardMaterial({ color: '#f1ede4', roughness: .6 });
@@ -1114,14 +1113,30 @@ async function buildRoom(renderer, rack) {
     if (bulbM) { bulbM.emissive.set('#ffcf8a'); bulbM.emissiveIntensity = 2.5 * e; }   // the bulb glows at night
     for (const m of lit) m.envMapIntensity = ROOM_LIGHT * (1 - (1 - NIGHT.room) * e);
   };
-  const out = { root, art, tools, hands, vinyl, tracks, star: brushes[0],             // star: the brush that is Badminton auction (the wide yellow one)
-    all: new THREE.Box3().setFromObject(root), shell: new THREE.Box3().setFromObject(shell), box: new THREE.Box3().setFromObject(art),
+  const out = { root, art, tools, hands, vinyl, tracks, star: null,                 // star: the brush that is Badminton auction (the wide yellow one), once it's in
+    all: new THREE.Box3().setFromObject(root), shell: new THREE.Box3().setFromObject(shell),
+    box: ((b) => { b.max.y += .093; b.max.z += .013; return b; })(new THREE.Box3().setFromObject(art)),   // with the contents' reach above and in front of it (measured with them in)
     boxFoot: ((b) => new THREE.Vector3((b.min.x + b.max.x) / 2, b.min.y, b.max.z))(new THREE.Box3().setFromObject(box)),   // its label hangs below it
     night: { at: 0, to: 0, set: setNight, lights },
     win, winTop: new THREE.Vector3(XL + .05, wy1 + .12, WIN.z),
     sunCheck: { toFloor, XL, T, WIN, wy0, wy1, wz0, wz1 } };        // the window and the sun's path, for the scripted light checks (?probe)
   root.add(outside);                                         // after the bounds and the envMap: unlit, and outside the room
+  // the box's contents, each as it arrives, where Blender's rigid-body physics left them (scripts/settle-art.py -> art-layout.json), in the box glb's own frame
+  const settle = (o, k, tool) => {
+    o.quaternion.set(...layout[k].q); o.position.set(...layout[k].p).add(box.position); art.add(o);
+    o.traverse(m => { if (m.isMesh) { m.castShadow = m.receiveShadow = true; m.material = m.material.clone();   // each its own materials (the two tubes too), so one can brighten alone
+      m.material.envMap = env; lit.push(m.material); } });
+    if (tool) { o.userData.p0 = o.position.clone(); o.userData.up = new THREE.Vector3(0, 1, 0).applyQuaternion(o.quaternion); o.userData.mats = []; o.traverse(m => m.isMesh && o.userData.mats.push(m.material)); tools.push(o); }
+    setNight(out.night.at); out.arrived?.();                 // its materials take the time of day; the page redraws (start sets arrived)
+  };
   await Promise.all(texLoads);
+  const later = files.later(), [cup, can, tube, ...brushes] = later;
+  vinyl.loadCovers();
+  cup.then(o => { o.traverse(m => { if (m.isMesh) { m.material.map = null; m.material.color.set('#f2efe8'); } }); settle(o, 'cup'); });   // plain white: the scan carries a noodle brand's print
+  tube.then(o => { settle(o, 'tube', true); settle(o.clone(), 'tube-2', true); });
+  can.then(o => settle(o, 'spraycan', true));
+  brushes.forEach((b, i) => b.then(o => { settle(o, `paintbrush-${i + 1}`, true); if (!i) out.star = o; }));
+  for (const f of later) f.catch(err => console.warn('room: a prop is missing', err));
   return out;
 }
 
@@ -1167,15 +1182,18 @@ function buildVinyl(tracks, tl, layout) {
   const sleeve = () => box(.314, .314, .004).translate(0, .157, -.002);   // origin on its bottom front edge, where it leans
   grp.add(top);
   const PER = layout.length / 4;                            // records per cube, as scripts/settle-records.py stood them
+  const covers = [];
   const sleeves = tracks.map((t, k) => {
     // the cover printed front and back; the edges and spine in the cover's own average colour, so a stack reads in its covers' colours
     const edge = mat('#808080', .7), art = new THREE.MeshStandardMaterial({ roughness: .6 });
-    const map = tl.load(new URL(`../${t.cover}`, ASSETS).href, tex => {
+    const map = new THREE.Texture();                         // its picture comes in loadCovers(), after the room is up
+    map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8; art.color.set('#808080');
+    covers.push(() => new THREE.ImageLoader().load(new URL(`../${t.cover}`, ASSETS).href, img => {
+      map.image = img; map.needsUpdate = true; art.map = map; art.color.set('#fff'); art.needsUpdate = true;
       const g = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
-      g.drawImage(tex.image, 0, 0, 1, 1); const [r, gr, b] = g.getImageData(0, 0, 1, 1).data;
+      g.drawImage(img, 0, 0, 1, 1); const [r, gr, b] = g.getImageData(0, 0, 1, 1).data;
       edge.color.setRGB(r / 255, gr / 255, b / 255, THREE.SRGBColorSpace);
-    });
-    map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8; art.map = map;
+    }));
     const s = add(top, sleeve(), [edge, edge, edge, edge, art, art], ...layout[k].p);   // on its side, spine out, where the physics left it
     s.quaternion.set(...layout[k].q);
     s.userData = { i: k, c: k / PER | 0, j: k % PER, art, edge, map, p0: s.position.clone(), q0: s.quaternion.clone(), p: 0 };   // p: how far it is pulled out (stepVinyl)
@@ -1235,7 +1253,7 @@ function buildVinyl(tracks, tl, layout) {
     const step = (DISPLAY.gap + .004) / Math.cos(a), x = c.x0 + DISPLAY.margin + .157 * Math.sin(a) + .004 * Math.cos(a), z = (c.z0 + c.z1) / 2;
     c.display = { angle: a, q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2 - a), at: c.recs.map((_, j) => new THREE.Vector3(x + j * step, c.y0, z)) };
   }
-  return { grp, top, cubes, sleeves, disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
+  return { grp, top, cubes, sleeves, loadCovers: () => covers.forEach(f => f()), disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
 }
 
 function softRoom(renderer) {
