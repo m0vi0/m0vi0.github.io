@@ -65,11 +65,21 @@ async function start() {
     document.documentElement.classList.add('room-on');
     if (new URLSearchParams(location.search).has('probe')) window.probe = { camera, room, renderer, scene, player: () => ({ ...V }) };   // test hook for the scripted checks
     for (const el of document.querySelectorAll('.room-tip')) tips[el.dataset.at] = el;
-    tips.now = document.querySelector('[data-at="now"]');   // what's playing, for screen readers (YouTube's player shows it on screen)
+    tips.now = document.querySelector('[data-at="now"]');   // what's playing
     // with a mouse, the labels show as the cursor's tooltip on hover (src/components/room-tooltip.tsx): in the scene they stay for the keyboard
     // (shown while focused) and for phones, which have no hover. The now-playing label stays, since it holds a link
     if (hoverable) for (const [at, el] of Object.entries(tips)) if (at !== 'now') el.classList.add('quiet');
     for (const at of ['rack', 'box', 'vinyl']) tips[at].addEventListener('click', () => choose(at));
+    if (!hoverable) {                                       // phones: short "Tap" labels, and the shelf's covers as a row of buttons (style.css .phone-ui)
+      const short = { rack: 'Tap to power on', box: 'Tap to open', vinyl: 'Tap to pick a record', window: 'Tap for day / night' };
+      for (const [at, s] of Object.entries(short)) tips[at].querySelector('small').textContent = s;
+      const star = tips.star.querySelector('small'); star.textContent = star.textContent.replace('Click', 'Tap');
+      const ui = document.querySelector('.phone-ui'), covers = ui.querySelector('.covers');
+      covers.append(...room.tracks.map((t, i) => Object.assign(document.createElement('button'), { type: 'button', ariaLabel: `${t.name}, ${t.artists.join(', ')}`, style: `background-image: url(${t.cover})`, onclick: () => play(i) })));
+      ui.querySelector('.phone-back').onclick = () => leave();
+      ui.querySelector('.phone-stop').onclick = () => stop();
+      tips.now.classList.replace('sr-only', 'now-line'); ui.querySelector('.phone-back').after(tips.now);
+    }
     // the room follows the site's theme (assets/theme.js): light is day, dark is night
     const n = room.night, night = () => document.documentElement.dataset.theme !== 'light';
     n.at = n.to = night() ? 1 : 0; n.set(n.at);
@@ -149,7 +159,7 @@ async function start() {
     zoomPose = view(room.vinyl.box, [0, .5, 1], .95, .9);
     const Z = aspect < 1 ? 1 : ROOM_ZOOM;                 // phones: the room already spans the screen
     poses = [heroPose, eye(.86 * Z, .8 * Z), ...servers,   // close-up: both labels show
-      view(room.box, [0, 3, .6], 1.32, 1.3),                // the showcase: close, almost straight down into the box
+      view(room.box, [0, 3, .6], aspect < 1 ? .95 : 1.32, 1.3),   // the showcase: close, almost straight down into the box (phones: back a bit, so the brush fits)
       eye(.86 * Z, .8 * Z)];                // the end: back to the room's close-up, to play with
   }
   function placeCamera() {
@@ -497,18 +507,6 @@ async function start() {
       });
     });
     document.head.append(Object.assign(document.createElement('script'), { src: 'https://open.spotify.com/embed/iframe-api/v1', async: true }));
-    loadYouTube();
-  }
-  // YouTube's own player, for tracks with a YouTube upload ("yt", scripts/fetch-spotify.mjs): whole songs for everyone, in every browser.
-  // YouTube's terms want it seen, so it shows (200 x 200, the smallest they allow) at the stage's corner while a record plays; otherwise it waits, unseen
-  let tube = null;
-  const tubeHost = stage.querySelector('.yt-host');
-  function loadYouTube() {
-    if (!room.tracks.some(t => t.yt) || !tubeHost) return;
-    window.onYouTubeIframeAPIReady = () => new YT.Player(tubeHost.firstElementChild, { width: 200, height: 200, playerVars: { playsinline: 1, rel: 0 },
-      events: { onReady: e => { tube = e.target; },
-        onStateChange: e => { if (e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING) heard = performance.now(); if (e.data === YT.PlayerState.ENDED && V.to) stop(); } } });
-    document.head.append(Object.assign(document.createElement('script'), { src: 'https://www.youtube.com/iframe_api', async: true }));
   }
   addEventListener('keydown', e => { if (e.key === 'Escape' && (zoom.at || inRoomZoom())) leave(); });
   function shelfHit(ev) {
@@ -522,24 +520,16 @@ async function start() {
     sing(room.tracks[i]); wake();
   }
   function stop() { V.next = -1; V.to = 0; silence(); wake(); }
-  function silence() { spotify?.pause(); tube?.stopVideo(); tubeHost?.classList.remove('on'); tips.now.hidden = true; }
+  function silence() { spotify?.pause(); tips.now.hidden = true; }
   function sing(t) {
-    const viaTube = !!(tube && t.yt);
     tips.now.firstChild.data = `${t.name}, `; tips.now.querySelector('small').textContent = t.artists.join(', '); tips.now.hidden = false;
     // started (silently) inside your click, which is what lets it play with sound later: the song itself waits for the needle (drop())
-    if (viaTube) { spotify?.pause(); tube.loadVideoById(t.yt); tube.mute(); tubeHost.classList.add('on'); }
-    else if (spotify && t.id) { tube?.stopVideo(); tubeHost?.classList.remove('on'); spotify.loadUri(`spotify:track:${t.id}`); }
+    if (spotify && t.id) spotify.loadUri(`spotify:track:${t.id}`);
   }
-  function songAt() {                                      // how far through the song on the turntable (0..1), from whichever player plays it
-    const t = room.tracks[V.i];
-    if (!t) return 0;
-    if (tube && t.yt) { const d = tube.getDuration?.(); return d ? tube.getCurrentTime() / d : 0; }
-    return spotAt;
-  }
+  const songAt = () => room.tracks[V.i] ? spotAt : 0;   // how far through the song on the turntable (0..1)
   function drop(t) {                                        // the needle is down: the song, from its start
-    if (tube && t.yt) { tube.seekTo(0, true); tube.unMute(); tube.playVideo(); }
-    else if (spotify && t.id) { spotAt = 0; spotify.play(); }
-    else return;
+    if (!spotify || !t.id) return;
+    spotAt = 0; spotify.play();
     const asked = performance.now();
     setTimeout(() => { if (heard < asked && V.i >= 0 && room.tracks[V.i] === t && V.to) stop(); }, 5000);   // the browser refused to play it: nothing left spinning in silence
   }
@@ -831,6 +821,12 @@ async function start() {
       }
       label(tips.star, starOn && !!room.star, starTop);
       label(tips.window, winHot && choosing() && !rise && !portal, room.winTop);   // last, so it moves below a label it would cover
+      if (!hoverable) {                                     // phones: the cover strip at the shelf, Back at the box; the playing cover outlined
+        const view = zoom.at === 'vinyl' && !portal ? 'shelf' : starOn && !starHot ? 'box' : '';
+        if (stage.dataset.view !== view) stage.dataset.view = view;
+        const ui = document.querySelector('.phone-ui .covers');
+        for (const [i, b] of [...ui.children].entries()) b.classList.toggle('on', i === (V.to ? V.i : V.next));
+      }
     }
   }
   const rackTop = new THREE.Vector3(0, rackTopY + .05, 0), starTop = new THREE.Vector3(), tipAt = new THREE.Vector3();

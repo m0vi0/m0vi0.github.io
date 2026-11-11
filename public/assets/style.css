@@ -132,12 +132,8 @@ img, video { max-width: 100%; display: block; }
 .spotify-host iframe { width: 100%; height: 100%; border: 0; }
 /* with a mouse the room's labels are the cursor's tooltip (src/components/room-tooltip.tsx); in the scene they show only for keyboard focus */
 .room-tip.quiet:not(:focus-visible) { opacity: 0; pointer-events: none; }
-/* YouTube's player (whole songs), at the smallest size YouTube allows (200 x 200): shown at the stage's bottom-right corner while a record plays, as its terms ask */
-.yt-host { position: absolute; z-index: 3; right: 1rem; bottom: 1rem; width: 200px; height: 200px; border: 2px solid var(--yellow); background: var(--black); opacity: 0; pointer-events: none; transition: opacity .3s; }
-.yt-host.on { opacity: 1; pointer-events: auto; }
-.yt-host iframe { display: block; width: 100%; height: 100%; border: 0; }
 /* phones too: the bottom-left corner, over bare floor (above the turntable, a phone snapped nearby taps onto the player) */
-/* for screen readers only: the record now playing (YouTube's player shows it on screen), the contact section's heading */
+/* for screen readers only: the record now playing, the contact section's heading */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* the shelf's close-up (a zoom, not a scroll): the name and hero text go, as in any close-up */
 .hero.is-zoomed :is(.wordmark, .hero-copy, .scroll-cue) { opacity: 0 !important; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
@@ -278,7 +274,7 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
 .portal-on .stage { filter: none; }
 .portal-on .waves { opacity: 0; }
 .portal-on .stage::after { opacity: 0; }
-/* the writeup is the page now (rack.js live()): it takes the clicks and the scroll, the rack hides, the YouTube box (z 3) stays on top */
+/* the writeup is the page now (rack.js live()): it takes the clicks and the scroll, the rack hides */
 .portal-live { overflow: hidden; }
 .portal-live :is(.wordmark, .hero-copy, .scroll-cue, .nav) { visibility: hidden; }
 .portal-live .stage { z-index: 50; }
@@ -327,6 +323,31 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
 @media (max-width: 26rem) {
   .nav nav { gap: .7rem; }
   .nav nav a { letter-spacing: .05em; }
+}
+
+/* phones (rack.js sets .stage[data-view]): the shelf's covers in a swipeable row with what's playing, Stop and Back; at the box, Back alone */
+.phone-ui { display: none; }
+@media (hover: none), (pointer: coarse) {
+  .stage[data-view="shelf"] .phone-ui, .stage[data-view="box"] .phone-ui { position: absolute; z-index: 6; left: 0; right: 0; bottom: 1rem; display: grid; gap: .6rem; padding-bottom: env(safe-area-inset-bottom); }
+  .stage[data-view="box"] :is(.covers, .now-line, .phone-stop) { display: none; }
+  .covers { display: flex; gap: .5rem; overflow-x: auto; padding: .4rem 1rem; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .covers button { flex: 0 0 72px; height: 72px; padding: 0; border: 2px solid transparent; background: #222 center / cover; scroll-snap-align: start; cursor: pointer; }
+  .covers button.on { border-color: var(--yellow); outline: 2px solid var(--black); }
+  .phone-bar { margin: 0 1rem; background: var(--black); color: var(--cream); padding: .6rem .9rem; display: flex; align-items: center; gap: .8rem; font: 700 .78rem/1.3 var(--sans); letter-spacing: .08em; text-transform: uppercase; }
+  .stage[data-view="box"] .phone-bar { width: fit-content; }
+  .now-line { flex: 1; min-width: 0; margin: 0; }
+  .now-line[hidden] { display: block; visibility: hidden; }   /* keeps Stop on the right */
+  .now-line[hidden] ~ .phone-stop { visibility: hidden; }
+  .now-line small { display: block; color: var(--yellow); text-transform: none; letter-spacing: .04em; font-weight: 500; }
+  .phone-bar button { min-height: 44px; border: 0; cursor: pointer; font: 700 .75rem var(--sans); letter-spacing: .14em; text-transform: uppercase; }
+  .phone-stop { padding: 0 1rem; background: var(--yellow); color: var(--black); }
+  .phone-back { width: 44px; padding: 0; background: none; color: var(--yellow); outline: 2px solid var(--yellow); outline-offset: -2px; font-size: 1.1rem; }
+  /* smaller room labels, so they stop covering the room; SmashBid under the box, above Back */
+  .room-tip { padding: .4rem .7rem; font-size: .72rem; }
+  .room-tip small { font-size: .7rem; margin-top: .1rem; }
+  .room-tip[data-at="star"] { top: auto !important; bottom: 5.5rem; left: 50% !important; translate: -50% 0; }
+  .colophon a { position: relative; }
+  .colophon a::after { content: ''; position: absolute; inset: -.875rem -.25rem; }   /* the footer's links: the same 44px hit area as the nav's */
 }
 
 /* phones: two full-screen blurs redrawn every scroll frame make the scan stutter */
