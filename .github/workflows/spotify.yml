@@ -1,4 +1,4 @@
-# Weekly refresh of the record shelf: my Spotify top 40 -> public/assets/data/top-tracks.json and public/assets/covers/, with each track's YouTube upload.
+# Weekly refresh of the record shelf: my Spotify top 40 -> public/assets/data/top-tracks.json and public/assets/covers/.
 # Needs repo secrets SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN (see README).
 name: Spotify top 40
 
@@ -23,7 +23,6 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       - name: Commit if changed
         run: |
           git add -A public/assets/data public/assets/covers

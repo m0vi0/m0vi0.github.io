@@ -51,10 +51,11 @@
       <button type="button" class="rack-tip room-tip" data-at="box" hidden>Art box<small>Web dev &amp; UI/UX. Click to open.</small></button>
       <button type="button" class="rack-tip room-tip" data-at="vinyl" hidden>Record shelf<small>My Spotify top 40. Click to pick one.</small></button>
       <p class="rack-tip room-tip" data-at="window" hidden>Window<small>Click to switch day and night.</small></p>
-      <p class="sr-only" data-at="now" aria-live="polite">Record<small></small></p>
+      <p class="sr-only" data-at="now" aria-live="polite" hidden>Record<small></small></p>
+      <!-- phones only (rack.js): the shelf's covers to tap, what's playing, Stop and Back; at the box, only Back -->
+      <div class="phone-ui"><div class="covers"></div><div class="phone-bar"><button type="button" class="phone-back" aria-label="Back">←</button><button type="button" class="phone-stop">■ Stop</button></div></div>
       <!-- the record player's sound when Spotify gives no preview: its own player, for the track rack.js puts on -->
       <div class="spotify-host" aria-hidden="true"><div></div></div>
-      <div class="yt-host"><div></div></div>
       <a class="rack-tip room-tip" data-at="star" href="https://smashbid.duckdns.org" target="_blank" rel="noopener" hidden>SmashBid<small>Badminton auction app with Google sign-in. React, TypeScript, Framer Motion. Click to open.</small></a>
     </div>
 
