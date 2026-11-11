@@ -531,7 +531,8 @@ async function start() {
     if (!spotify || !t.id) return;
     spotAt = 0; spotify.play();
     const asked = performance.now();
-    setTimeout(() => { if (heard < asked && V.i >= 0 && room.tracks[V.i] === t && V.to) stop(); }, 5000);   // the browser refused to play it: nothing left spinning in silence
+    // phones (iOS Safari) refuse play() from the page: the visitor taps the visible Spotify bar's ▶ (style.css), so the record keeps spinning meanwhile
+    if (hoverable) setTimeout(() => { if (heard < asked && V.i >= 0 && room.tracks[V.i] === t && V.to) stop(); }, 5000);   // the browser refused to play it: nothing left spinning in silence
   }
   function stepVinyl(dt) {                                  // true while something on the shelf moves
     const v = room.vinyl, ps = v.sleeves[V.i]?.userData, was = V.p;
