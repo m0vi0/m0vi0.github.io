@@ -12,8 +12,12 @@
   };
   set(saved === 'light' || saved === 'dark' ? saved : os.matches ? 'light' : 'dark');
   os.addEventListener('change', e => { if (!saved) set(e.matches ? 'light' : 'dark'); });   // follows the system until a choice is made
+  let fading = 0;
   document.addEventListener('click', e => {
     if (!e.target.closest('[data-theme-toggle]')) return;
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {   // the page's colours take the room's 3 s to change (style.css .theme-fading)
+      root.classList.add('theme-fading'); clearTimeout(fading); fading = setTimeout(() => root.classList.remove('theme-fading'), 3000);
+    }
     saved = root.dataset.theme === 'light' ? 'dark' : 'light';
     try { localStorage.setItem('theme', saved); } catch {}
     set(saved);

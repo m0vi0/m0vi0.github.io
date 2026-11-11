@@ -1,9 +1,9 @@
-# Stands the record shelf's 20 sleeves on their side, 5 in each of its 4 cubes, spines out, with Blender's rigid-body physics (Bullet)
+# Stands the record shelf's 40 sleeves on their side, 10 in each of its 4 cubes, spines out, with Blender's rigid-body physics (Bullet)
 # -> public/assets/record-layout.json, read by rack.js (buildVinyl). Usage:
 #   blender -b --factory-startup --disable-autoexec --python scripts/settle-records.py -- public/assets/record-layout.json
 # Each cube's floor, walls, top and back are fixed boxes (sizes from buildVinyl: W .8, H .8, D .39, boards T .03, back .006). The sleeves start
 # upright a little apart, each leaning toward its cube's left wall, and fall against it and each other like books; every cube starts a little
-# differently so the four stacks don't look copied. Order: 1-5 top left, 6-10 top right, 11-15 bottom left, 16-20 bottom right. Deterministic.
+# differently so the four stacks don't look copied. Order: 1-10 top left, 11-20 top right, 21-30 bottom left, 31-40 bottom right. Deterministic.
 import bpy, json, math, sys
 from mathutils import Matrix, Vector
 
@@ -11,6 +11,7 @@ out = sys.argv[sys.argv.index('--') + 1]
 for o in list(bpy.data.objects): bpy.data.objects.remove(o)
 scene = bpy.context.scene
 W, H, D, T, BACK, S, TH = .8, .8, .39, .03, .006, .314, .004    # shelf, sleeve side, sleeve thickness
+PER = 10                                                          # sleeves per cube (rack.js reads it back as the layout's length / 4)
 C = Matrix.Rotation(math.radians(90), 4, 'X')                     # three.js (Y up) point -> Blender (Z up) point
 
 def block(lo, hi, kind, name, mass=1, turn=Matrix()):
@@ -39,19 +40,19 @@ for c, (x0, x1, y0, y1) in enumerate(cubes):
         block(lo, hi, 'PASSIVE', f'{name}{c}')
     gap, step, lean0 = START[c]
     zc = z1 - S / 2 - .012                                            # spines 1.2 cm in from the open front
-    for i in range(5):
+    for i in range(PER):
         x = x0 + gap + i * step                                       # upright, leaning a little more each toward the left wall (clear of it and each other)
         hinge = C @ Vector((x - TH / 2, y0 + .002, zc))
         lean = Matrix.Translation(hinge) @ Matrix.Rotation(math.radians(lean0 + i / 2), 4, C.to_3x3() @ Vector((0, 0, 1))) @ Matrix.Translation(-hinge)
-        block((x - TH / 2, y0 + .002, zc - S / 2), (x + TH / 2, y0 + .002 + S, zc + S / 2), 'ACTIVE', f'sleeve{c * 5 + i}', .2, lean)
+        block((x - TH / 2, y0 + .002, zc - S / 2), (x + TH / 2, y0 + .002 + S, zc + S / 2), 'ACTIVE', f'sleeve{c * PER + i}', .2, lean)
 
 for f in range(1, w.point_cache.frame_end + 1): scene.frame_set(f)
 
 # each sleeve as rack.js builds it: a .314 x .314 x .004 box whose origin is its bottom front edge (centre at (0, .157, -.002) in its own frame),
 # turned a quarter about y so its cover faces +x and an edge (the spine) faces the front
 dg = bpy.context.evaluated_depsgraph_get(); layout = []
-for i in range(20):
-    x0, x1, y0, y1 = cubes[i // 5]
+for i in range(4 * PER):
+    x0, x1, y0, y1 = cubes[i // PER]
     o = bpy.data.objects[f'sleeve{i}']; mw = o.evaluated_get(dg).matrix_world
     m = C.inverted() @ mw @ C @ Matrix.Rotation(math.pi / 2, 4, 'Y') @ Matrix.Translation((0, -S / 2, TH / 2))
     p, q, _ = m.decompose()

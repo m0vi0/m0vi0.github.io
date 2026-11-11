@@ -6,7 +6,7 @@ on:
   push:
     branches: [main]
   workflow_run:
-    workflows: ['Spotify top 20']
+    workflows: ['Spotify top 40']
     types: [completed]
   workflow_dispatch:
 

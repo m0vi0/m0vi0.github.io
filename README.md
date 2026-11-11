@@ -6,16 +6,16 @@ Mervin Sequeira's portfolio, built with Vite (React, TypeScript, Tailwind and sh
 - Models, textures, data and `style.css` are static files in `public/assets/`; the code in `src/` is bundled.
 - `.github/workflows/deploy.yml` builds and publishes on every push to `main`. In Settings → Pages, set Source to "GitHub Actions".
 
-## Record shelf: Spotify top 20
+## Record shelf: Spotify top 40
 
-The record player in the 3D room plays my all-time Spotify top 20. `scripts/fetch-spotify.mjs` saves them to `public/assets/data/top-tracks.json` and their covers to `public/assets/covers/`, and with a YouTube key each track's official YouTube upload, which plays in full in YouTube's player. A track without one plays through Spotify's embed (whole songs only for listeners logged in to Spotify outside Safari). Until it has run, the shelf shows 20 placeholder records. No keys ever reach the browser.
+The record player in the 3D room plays my all-time Spotify top 40. `scripts/fetch-spotify.mjs` saves them to `public/assets/data/top-tracks.json` and their covers to `public/assets/covers/`, and with a YouTube key each track's official YouTube upload, which plays in full in YouTube's player. A track without one plays through Spotify's embed (whole songs only for listeners logged in to Spotify outside Safari). Until it has run, the shelf shows its placeholder records. No keys ever reach the browser.
 
 ### One-time setup (about 10 minutes)
 1. Create an app at https://developer.spotify.com/dashboard. The app owner needs Spotify Premium. Add the redirect URI `http://127.0.0.1:8888/callback`.
 2. `cp .env.example .env`, then paste the client ID and secret into `.env`. `.env` is gitignored.
 3. Run `node --env-file=.env scripts/fetch-spotify.mjs --auth`, open the printed link, allow access, and paste the printed `SPOTIFY_REFRESH_TOKEN=...` line into `.env`.
 4. For whole songs: in the Google Cloud console, enable "YouTube Data API v3", create an API key restricted to it, and add it to `.env` as `YOUTUBE_API_KEY`.
-5. Run `node --env-file=.env scripts/fetch-spotify.mjs` to pull the real top 20, their covers and their YouTube uploads. A wrong YouTube match is fixed by editing that track's `yt` in `top-tracks.json`; it is kept on later runs.
+5. Run `node --env-file=.env scripts/fetch-spotify.mjs` to pull the real top 40, their covers and their YouTube uploads. A wrong YouTube match is fixed by editing that track's `yt` in `top-tracks.json`; it is kept on later runs.
 
 ### Weekly update on GitHub
 `.github/workflows/spotify.yml` runs the same script every Monday at 06:00 UTC, and on demand from the Actions tab. It commits only when the list changed, and the deploy workflow then publishes it.

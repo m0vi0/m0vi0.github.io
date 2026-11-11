@@ -23,9 +23,10 @@ const FIRST = 2;                                             // the top server's
 const SERVERS = document.querySelectorAll('.rack > li').length;   // the labelled servers, top down
 const BOX = FIRST + SERVERS;                                 // the room's box showcase, after the servers
 const STOPS = BOX + 2;                                       // hero, close-up, the servers, the box, the end close-up: the .stop count
+const ROOM_ZOOM = 1.25;                                     // the room's size on screen on wide screens, at the landing and the close-ups (phones: as wide as fits)
 const FOV = 28, EYE_FOV = 50;                                // the room's close-up widens the lens for its one-point perspective
 const JUMP = { '#top': 0, '#projects': FIRST + 1, '#contact': FIRST + 4 };
-if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on'); });
+if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on', 'room-on'); });
 
 async function start() {
   // antialias only below 2x: on a Retina screen the pixels are fine enough, and 4x MSAA buffers there cost ~160 MB of GPU memory at a laptop's size
@@ -47,7 +48,7 @@ async function start() {
 
   const scan = document.querySelector('.scan'), hero = scan?.querySelector('.hero');
   const scanOn = !reduce && !!scan;                          // the faceplates draw differently in scan mode
-  const { rackRoot, units, frameMesh, blink } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn);
+  const { rackRoot, units, frameMesh, blink, top: rackTopY } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn);
   const room = await buildRoom(renderer, new THREE.Box3().setFromObject(rackRoot));
   // the room and the rack ride one lift: on load it rises from below, turning, and settles past its mark (stepRise).
   // lift turns about the room's middle; inner puts the rack back at the origin, so poses and picking are untouched once it settles
@@ -59,6 +60,7 @@ async function start() {
     inner.add(room.root);
     const c = room.shell.getCenter(new THREE.Vector3()); lift.position.copy(c); inner.position.copy(c).negate();
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // shadows redraw on animated frames only (tick), not on the clock's idle ticks
     document.documentElement.classList.add('room-on');
     if (new URLSearchParams(location.search).has('probe')) window.probe = { camera, room, renderer, scene, player: () => ({ ...V }) };   // test hook for the scripted checks
     for (const el of document.querySelectorAll('.room-tip')) tips[el.dataset.at] = el;
@@ -72,14 +74,12 @@ async function start() {
     n.at = n.to = night() ? 1 : 0; n.set(n.at);
     new MutationObserver(() => { n.to = night() ? 1 : 0; wake(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     if (!reduce) rise = -1;                                 // starts on the first frame drawn (stepRise)
-  }
+  } else document.documentElement.classList.remove('room-on');   // set early by index.html's head script
 
   // ---- scan mode: the page scroll picks a pose between stops (see .stops in index.html) ----
   document.documentElement.classList.add('has-3d');
-  if (scanOn) {
-    document.documentElement.classList.add('scan-on');
-    document.querySelector('.hint').textContent = 'Scroll to step into the room.';
-  }
+  if (scanOn) document.documentElement.classList.add('scan-on');   // index.html's head script already set it, before the first paint
+  else document.querySelector('.hint').textContent = 'Projects and contact are below.';
   let sTarget = 0, sCur = 0;
   const span = () => scan.offsetHeight - hero.offsetHeight;
   function readScroll() { sTarget = span() > 0 ? Math.min(Math.max(-scan.getBoundingClientRect().top / span(), 0), 1) * (STOPS - 1) : 0; }
@@ -88,7 +88,8 @@ async function start() {
   // a click on the rack, the box or the background: the page moves to that stop at once, and the camera flies straight from where it is to
   // there (placeCamera), past nothing in between, while the labels are already at the stop
   function flyTo(n) {
-    fly = { pos: camera.position.clone(), look: look.clone(), fov: camera.fov, shift: [...shiftNow], t0: performance.now() };
+    const css = ['--p', '--dof'].map(k => parseFloat(hero.style.getPropertyValue(k)) || 0);   // the page's fade where it was: it follows the flight too (updateScan)
+    fly = { pos: camera.position.clone(), look: look.clone(), fov: camera.fov, shift: [...shiftNow], t0: performance.now(), css, e: 0 };
     scrollTo({ top: stopTop(n), behavior: 'instant' }); readScroll(); sCur = sTarget; updateScan(); wake();
   }
   // the room's track: hero, close-up (click the rack or the box), the servers, the box, the whole room
@@ -127,8 +128,8 @@ async function start() {
         const y0 = name.bottom - box.top + H * .02, y1 = hero.querySelector('.hero-copy').getBoundingClientRect().top - box.top;
         heroPose = view(room.shell, open, 1.05, Math.max(y1 - y0, H * .3) / H * 1.1, [0, ((y0 + y1) / 2 - H / 2) / H]);
       } else {
-        const x1 = W * .99, x0 = Math.min(name.right - box.left - W * .06, x1 - W * .4);   // the room itself fits here; its stalk hangs below
-        heroPose = view(room.shell, open, (x1 - x0) / W, .74, [((x0 + x1) / 2 - W / 2) / W, -.07]);
+        const x1 = W * .99, x0 = x1 - ROOM_ZOOM * (x1 - Math.min(name.right - box.left - W * .06, x1 - W * .4));   // the room itself fits here, its right edge kept; its stalk hangs below
+        heroPose = view(room.shell, open, (x1 - x0) / W, .74 * ROOM_ZOOM, [((x0 + x1) / 2 - W / 2) / W, -.07]);
       }
     }
     if (!scanOn) return poses = [heroPose];
@@ -145,9 +146,10 @@ async function start() {
       return { pos: new THREE.Vector3(x, y, b.max.z + d), look: new THREE.Vector3(x, y, b.min.z), fov: EYE_FOV, shift: [0, ((b.min.y + b.max.y) / 2 - y) / (d * tv) / 2] };
     };
     zoomPose = view(room.vinyl.box, [0, .5, 1], .95, .9);
-    poses = [heroPose, eye(.86, .8), ...servers,           // close-up: both labels show
+    const Z = aspect < 1 ? 1 : ROOM_ZOOM;                 // phones: the room already spans the screen
+    poses = [heroPose, eye(.86 * Z, .8 * Z), ...servers,   // close-up: both labels show
       view(room.box, [0, 3, .6], 1.32, 1.3),                // the showcase: close, almost straight down into the box
-      eye(.86, .8)];                                        // the end: back to the room's close-up, to play with
+      eye(.86 * Z, .8 * Z)];                // the end: back to the room's close-up, to play with
   }
   function placeCamera() {
     if (portal) return;
@@ -164,7 +166,8 @@ async function start() {
       const f = reduce ? 1 : Math.min((performance.now() - fly.t0) / 1100, 1), e = f * f * (3 - 2 * f);
       camera.position.lerpVectors(fly.pos, camera.position, e); look.lerpVectors(fly.look, look, e);
       fov = fly.fov + (fov - fly.fov) * e; sx = fly.shift[0] + (sx - fly.shift[0]) * e; sy = fly.shift[1] + (sy - fly.shift[1]) * e;
-      if (f >= 1) fly = null;
+      fly.e = e; if (f >= 1) fly = null;
+      updateScan();
     }
     if (zoom.k) {                                           // the whole shelf: its four cubes of records and the turntable
       const e = zoom.k * zoom.k * (3 - 2 * zoom.k);
@@ -194,11 +197,13 @@ async function start() {
   }
   const rackBox = new THREE.Box3(), corner = new THREE.Vector3();
   function updateScan() {
-    hero.style.setProperty('--p', Math.min(sCur, 1).toFixed(3));
+    let p = Math.min(sCur, 1), dof = Math.max(Math.min(sCur, 1, (STOPS - 1.2 - sCur) / .6), 0);
+    if (fly) { p = fly.css[0] + (p - fly.css[0]) * fly.e; dof = fly.css[1] + (dof - fly.css[1]) * fly.e; }   // a click's flight: the name and the blur ease with the camera, no snap
+    hero.style.setProperty('--p', p.toFixed(3));
     hero.style.setProperty('--end', (end = Math.min(Math.max((sCur - STOPS + 1.6) / .5, 0), 1)).toFixed(3));   // the contact line over the pull-back (render dims the faceplates under it)
     hero.classList.toggle('is-end', !!end && sCur > STOPS - 1.3);
-    hero.style.setProperty('--dof', Math.max(Math.min(sCur, 1, (STOPS - 1.2 - sCur) / .6), 0).toFixed(3));   // backdrop blur: on while the rack is close, off again at the pull-back
-    hero.classList.toggle('is-close', sCur > .5);
+    hero.style.setProperty('--dof', dof.toFixed(3));   // backdrop blur: on while the rack is close, off again at the pull-back
+    hero.classList.toggle('is-close', p > .5);
     const n = Math.round(sCur) - FIRST;                    // the server at this stop, if any
     const at = n === SERVERS ? 'star' : n;         // or the showcase
     if (sCur > 1.5 && sCur < BOX - .5) toRack();   // scrolled on to the servers: the rack powers on
@@ -249,8 +254,8 @@ async function start() {
     ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(rackMeshes, false)[0];
     let u = hit?.object.userData.unit ?? null;
-    // only the middle of a unit counts; its edges belong to the rack (a unit that is out keeps its whole face, or sliding out from under the pointer would un-hover it)
-    if (u && u !== picked) { u.pivot.worldToLocal(local.copy(hit.point)); if (Math.abs(local.y) > u.h * .35 || Math.abs(local.x) > u.w * .45) u = null; }
+    // the unit's face counts across its whole height (1U units touch) but not its sides, which belong to the rack (a unit that is out keeps its whole face, or sliding out from under the pointer would un-hover it)
+    if (u && u !== picked) { u.pivot.worldToLocal(local.copy(hit.point)); if (Math.abs(local.y) > u.h * .5 || Math.abs(local.x) > u.w * .45) u = null; }
     // rack: the unit nearest the pointer's height, for clicks on the cabinet between units
     const rack = hit ? units.reduce((a, b) => Math.abs(b.pivot.getWorldPosition(local).y - hit.point.y) < Math.abs(a.pivot.getWorldPosition(local).y - hit.point.y) ? b : a) : null;
     return { u, rack, hit, x: ev.clientX - r.left, y: ev.clientY - r.top };
@@ -428,7 +433,10 @@ async function start() {
       wake(); return;
     }
     if (choosing()) { const w = which(ev); if (w) choose(w); else if (sCur > .5 && !ray.intersectObject(room.root, true)[0]) flyTo(0); return; }   // the page behind the room: back to the landing
-    if (Math.abs(sCur - BOX) < .5) { if (!ray.intersectObject(room.art, true)[0]) leave(); return; }   // the showcase brush has no link yet; the background steps back
+    if (Math.abs(sCur - BOX) < .5) {                       // the showcase: the Badminton brush opens SmashBid (its label is the link); the background steps back
+      if (ray.intersectObject(room.star, true)[0]) tips.star.click(); else if (!ray.intersectObject(room.art, true)[0]) leave();
+      return;
+    }
     const { u, rack, hit, x, y } = pick(ev);
     if (!u) { pickServer(null); if (rack && scanOn) goStop(rack.i + 1); else if (inRoomZoom()) leave(); return; }   // the cabinet: close up on the nearest unit; empty space: slide back in
     ripple(x, y);
@@ -445,7 +453,7 @@ async function start() {
   // the platter spins up (spin), the arm lifts, swings over and lowers (lift, swing, drop). Stop runs it backward
   const VT = { out: [.1, .9], rise: [.9, 1.5], cross: [1.5, 2], land: [2, 2.3], spin: [2.3, 3], lift: [2.4, 2.6], swing: [2.6, 3.4], drop: [3.4, 3.7] }, PLAYING = 3.7;
   const RPM = 33.3 / 60 * Math.PI * 2, SPRING = { k: 40, c: 10 }, PART_S = .8, PULL_S = 1.1;   // the shelf's pace: the parting spring, parting and pulling a record out (s)
-  const V = { i: -1, next: -1, p: 0, to: 0, spin: 0 }, C = new THREE.Vector3(), D = new THREE.Vector3(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), RX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+  const V = { i: -1, next: -1, p: 0, to: 0, spin: 0, arm: 0 }, C = new THREE.Vector3(), D = new THREE.Vector3(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), RX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
   // the flip's state, one per cube: c is the spring's place across it (0 first record .. last), to its target (the pointer's place, or the
   // shown record's), e how far the records have parted. showing: the one record in the shelf pulled out to show its cover (a click), or null
   const flips = [0, 1, 2, 3].map(() => ({ c: 2, v: 0, to: 2, on: false, touch: false, e: 0, d: 0 }));   // d: how far into the hover display
@@ -474,7 +482,7 @@ async function start() {
   }
   // Spotify's own embed, driven from code (its iFrame API) and kept off screen: whole songs for listeners logged in to Spotify in that browser,
   // 30 s previews for everyone else and in Safari (which keeps the embed from seeing the login). Loaded when the shelf close-up opens
-  let spotify = null, spotifyAsked = false, heard = 0;
+  let spotify = null, spotifyAsked = false, heard = 0, spotAt = 0;   // spotAt: how far through its song Spotify's player is (0..1)
   function loadSpotify() {
     if (spotifyAsked) return; spotifyAsked = true;
     window.onSpotifyIframeApiReady = api => api.createController(stage.querySelector('.spotify-host > div'), {   // the inner div: the API replaces it with its iframe, inside the off-screen host
@@ -482,7 +490,8 @@ async function start() {
       spotify = c;
       c.addListener('playback_update', ({ data }) => {
         if (!data.isPaused || data.isBuffering) heard = performance.now();   // playing, or on its way
-        const now = room.tracks[V.i];                       // the song on the turntable ended (not a late word about the one before): the record goes back
+        const now = room.tracks[V.i];
+        if (now && data.playingURI === `spotify:track:${now.id}` && data.duration) spotAt = data.position / data.duration;                       // the song on the turntable ended (not a late word about the one before): the record goes back
         if (now && V.to && data.playingURI === `spotify:track:${now.id}` && data.duration && data.position >= data.duration - 400) stop();
       });
     });
@@ -520,9 +529,15 @@ async function start() {
     if (viaTube) { spotify?.pause(); tube.loadVideoById(t.yt); tube.mute(); tubeHost.classList.add('on'); }
     else if (spotify && t.id) { tube?.stopVideo(); tubeHost?.classList.remove('on'); spotify.loadUri(`spotify:track:${t.id}`); }
   }
+  function songAt() {                                      // how far through the song on the turntable (0..1), from whichever player plays it
+    const t = room.tracks[V.i];
+    if (!t) return 0;
+    if (tube && t.yt) { const d = tube.getDuration?.(); return d ? tube.getCurrentTime() / d : 0; }
+    return spotAt;
+  }
   function drop(t) {                                        // the needle is down: the song, from its start
     if (tube && t.yt) { tube.seekTo(0, true); tube.unMute(); tube.playVideo(); }
-    else if (spotify && t.id) spotify.play();
+    else if (spotify && t.id) { spotAt = 0; spotify.play(); }
     else return;
     const asked = performance.now();
     setTimeout(() => { if (heard < asked && V.i >= 0 && room.tracks[V.i] === t && V.to) stop(); }, 5000);   // the browser refused to play it: nothing left spinning in silence
@@ -599,7 +614,9 @@ async function start() {
       v.disc.quaternion.copy(s.quaternion).multiply(RX).slerp(Q.setFromAxisAngle(Y, V.spin), r);
     }
     v.platter.rotation.y = V.spin;
-    v.arm.rotation.y = v.swing * inOut(phase(V.p, ...VT.swing));
+    if (V.p >= PLAYING && V.to) V.arm = v.swing + (v.inner - v.swing) * Math.min(Math.max(songAt(), 0), 1);   // tracking in with the song
+    else if (!V.p) V.arm = v.swing;                         // at rest: the next record starts at the outer groove
+    v.arm.rotation.y = V.arm * inOut(phase(V.p, ...VT.swing));   // lifting off, it swings home from wherever it got to
     v.arm.rotation.x = -.08 * (ease(phase(V.p, ...VT.lift)) - ease(phase(V.p, ...VT.drop)));
     return moving;
   }
@@ -671,19 +688,51 @@ async function start() {
     camera.lookAt(look0.clone().lerp(c, k));
     if (k < 1) camera.setViewOffset(W, H, off[0] * (1 - k), off[1] * (1 - k), W, H); else camera.clearViewOffset();
     camera.updateMatrixWorld(); lid.clip(k);
-    if (t > 1.2 && !portal.gone) { portal.gone = true; location.href = u.link.href; }
+    if (t > 1.2 && !portal.gone) { portal.gone = true; live(pages.get(u)); }
   }
-  addEventListener('pageshow', e => {                       // back button from a writeup: put the rack back
+  // the writeup stays in its iframe instead of loading as its own page, so a record on the turntable keeps playing through it:
+  // the address bar and the title follow, Back (or its "Back to the rack" link) brings the rack back. Reloading gives the plain writeup page
+  const homePage = { title: document.title, path: location.pathname.replace(/index\.html$/, '') }, isHome = path => path.replace(/index\.html$/, '') === homePage.path;
+  function live(f) {
+    const d = f.contentDocument, at = f.contentWindow.location.href;
+    if (at !== location.href) history.pushState({ portal: 1 }, '', at);   // not when Back or Forward brought it here
+    document.title = f.title = d.title;
+    f.tabIndex = 0; f.removeAttribute('aria-hidden'); stage.removeAttribute('aria-hidden');
+    document.documentElement.classList.add('portal-live');
+    f.style.display = 'none'; f.offsetWidth; f.style.display = '';   // Chrome keeps the wheel routing from its pointer-events: none days until a relayout
+    f.focus();
+    if (f.dataset.hooked === undefined) { f.dataset.hooked = ''; f.addEventListener('load', () => { if (portal) live(f); }); }
+    d.addEventListener('click', e => {
+      const a = e.target.closest('a[href]');
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const to = new URL(a.href);
+      if (to.origin !== location.origin) { a.target = '_blank'; a.rel = 'noopener'; return; }   // out of the site: a new tab, the music stays here
+      if (to.pathname === at.replace(/[?#].*/, '').replace(location.origin, '')) return;      // a heading on this page
+      e.preventDefault();
+      if (isHome(to.pathname)) history.back();                                       // home: Back, to the rack
+      else f.contentWindow.location.replace(to.href);                                      // another writeup, in the same frame (its load pushes the address)
+    });
+  }
+  addEventListener('popstate', () => {
+    const f = portal && pages.get(portal.u);
+    if (!f) { if (!isHome(location.pathname)) location.reload(); return; }          // Forward into a writeup after leaving it: load it properly
+    if (isHome(location.pathname)) { document.title = homePage.title; stage.setAttribute('aria-hidden', 'true'); leavePortal(); }
+    else if (f.contentWindow.location.href !== location.href) f.contentWindow.location.replace(location.href);   // Back from one writeup to the one before
+  });
+  addEventListener('pageshow', e => {                       // back button from a writeup opened as its own page: put the rack back
     if (e.persisted && picked) pickServer(null);
-    if (!e.persisted || !portal) return;
+    if (e.persisted && portal) leavePortal();
+  });
+  function leavePortal() {
     const { u, lid } = portal; portal = null;
+    document.documentElement.classList.remove('portal-live');
     u.pivot.remove(lid.grp); lid.grp.traverse(o => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
     for (const f of pages.values()) f.remove(); pages.clear();
     document.documentElement.classList.remove('portal-on');
     for (const v of units) { v.pivot.position.z = v.baseZ; v.pivot.rotation.set(0, 0, 0); v.out = v.target = 0; }
     if (scanOn) { readScroll(); sCur = sTarget; updateScan(); }
     placeCamera(); wake();
-  });
+  }
 
   // ---- loop: runs only while something moves and the stage is on screen ----
   let running = false, visible = true, last = performance.now(), boot = 0;
@@ -692,9 +741,10 @@ async function start() {
   function wake() { if (!running && visible && !document.hidden) { running = true; last = performance.now(); renderer.setAnimationLoop(tick); } }
   function tick(now) {
     const dt = Math.min(Math.max((now - last) / 1000, 0), .05) / SLOW; last = now;   // rAF time can trail performance.now()
+    renderer.shadowMap.needsUpdate = true;
     let moving = false;
     const k = reduce ? 1 : 1 - Math.exp(-dt * 10);
-    if (portal) { stepPortal(now); moving = true; }
+    if (portal) { stepPortal(now); moving = !portal.gone; }   // once the writeup is the page, the room behind it stops drawing
     else {
       if (scanOn) {                                         // ease toward the scroll position so wheel steps glide
         sCur += (sTarget - sCur) * (1 - Math.exp(-dt * 8));
@@ -720,9 +770,9 @@ async function start() {
         zoom.k = reduce ? zk : Math.min(Math.max(zoom.k + Math.sign(zk - zoom.k) * dt / .8, 0), 1);
         if (zoom.k !== zk) moving = true;
         if (stepVinyl(dt)) moving = true;
-        const n = room.night;                               // the light: 1.2 s between day and night
-        if (n.at !== n.to) { n.at = reduce ? n.to : Math.min(Math.max(n.at + Math.sign(n.to - n.at) * dt / 1.2, 0), 1); n.set(n.at); moving = true; }
-        if (n.at > 0 && !reduce && closeUp()) { n.lights(now / 1000); moving = true; }   // the shelf's lights run while the room is in view
+        const n = room.night;                               // the light: 3 s between day and night, a sunset or a sunrise
+        if (n.at !== n.to) { n.at = reduce ? n.to : Math.min(Math.max(n.at + Math.sign(n.to - n.at) * dt / 3, 0), 1); n.set(n.at, n.to); moving = true; }
+        if (!reduce && closeUp()) { if (n.at > 0) n.lights(now / 1000); moving = true; }   // the racing clock (and at night the shelf's lights) run smoothly while the room is in view
         if (orb.back) { orb.y -= orb.y * k; orb.p -= orb.p * k; if (Math.abs(orb.y) + Math.abs(orb.p) < 1e-4) { orb.y = orb.p = 0; orb.back = false; } else moving = true; }
         // the tools hop one after another (90 ms apart, 3 cm, 350 ms each); the Badminton brush stands 4 cm up at its stop; the tool under the
         // pointer lifts 2 cm more along its own lean and brightens a little, like a server under it
@@ -745,22 +795,21 @@ async function start() {
     if (!moving || !visible || document.hidden) { running = false; renderer.setAnimationLoop(null); }
   }
   const bootStep = () => boot ? (performance.now() - boot) / 130 / SLOW : powered ? 99 : -1;   // power-on: one server every 130ms, top to bottom (-1: dark until it is chosen)
-  // the lift's ride in, like a screw being unscrewed: one eased value drives both the climb (6 m at the old 2.6 m room, scaled with it) and the 810° turn, past their mark and back (ease-out-back) over 2.4 s
-  const RISE = { ms: 2400, drop: 6 * ROOM / 2.6, turn: Math.PI * 4.5, over: .9 };
-  const backOut = x => { const c1 = 1.70158 * RISE.over, c3 = c1 + 1; return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2; };
+  // the lift's ride in: straight up from below (6 m at the old 2.6 m room, scaled with it), fast and then settling (ease-out quart) over 1.8 s
+  const RISE = { ms: 1800, drop: 6 * ROOM / 2.6 };
   const home = lift.position.clone();
   function stepRise(now) {                                  // true while it rides
     if (rise < 0) rise = now;
-    const x = Math.min((now - rise) / (RISE.ms * SLOW), 1), e = backOut(x);
-    lift.position.y = home.y - RISE.drop * (1 - e); lift.rotation.y = -RISE.turn * (1 - e);
+    const x = Math.min((now - rise) / (RISE.ms * SLOW), 1), e = 1 - (1 - x) ** 4;
+    lift.position.y = home.y - RISE.drop * (1 - e);
     if (x >= 1) rise = 0;
     return !!rise;
   }
   if (rise) stepRise(performance.now());
   function render() {
     const t = performance.now() / 1000, on = bootStep();
-    if (room) {                                             // the clock: the real time at load, then 10x as fast; hours and minutes glide, the seconds tick
-      const d = new Date(CLOCK0 + (performance.now() - PERF0) * CLOCK_SPEED), sec = d.getSeconds(), min = d.getMinutes() + sec / 60;
+    if (room) {                                             // the clock: the real time at load, then racing; every hand glides
+      const d = new Date(CLOCK0 + (performance.now() - PERF0) * CLOCK_SPEED), sec = d.getSeconds() + d.getMilliseconds() / 1000, min = d.getMinutes() + sec / 60;
       room.hands.s.rotation.z = -sec / 60 * Math.PI * 2; room.hands.m.rotation.z = -min / 60 * Math.PI * 2; room.hands.h.rotation.z = -(d.getHours() % 12 + min / 60) / 12 * Math.PI * 2;
     }
     if (boot) { if (on > units.length + 2) { boot = 0; powered = true; } }   // 2 steps past the last server, so it slides back in
@@ -782,7 +831,7 @@ async function start() {
       label(tips.window, winHot && choosing() && !rise && !portal, room.winTop);   // last, so it moves below a label it would cover
     }
   }
-  const rackTop = new THREE.Vector3(0, 1.05, 0), starTop = new THREE.Vector3(), tipAt = new THREE.Vector3();
+  const rackTop = new THREE.Vector3(0, rackTopY + .05, 0), starTop = new THREE.Vector3(), tipAt = new THREE.Vector3();
   function label(el, on, p) {                               // show el at world point p (projected this frame), kept inside the stage
     el.hidden = !on;
     if (!on) return;
@@ -797,7 +846,7 @@ async function start() {
   }
   const placed = [];
   // shortcut: LEDs blink by re-rendering ~7x/s while the rack is on screen; drop the interval if battery use matters
-  setInterval(() => { if (!running && visible && !document.hidden) render(); }, 150);   // the room's clock ticks even with reduced motion: telling time is its job
+  setInterval(() => { if (!running && visible && !document.hidden && !portal) render(); }, 150);   // the room's clock ticks even with reduced motion: telling time is its job
   if (scanOn) { readScroll(); sCur = sTarget; updateScan(); }
   if (depthOn) stepDepth(1);
   wake();
@@ -809,7 +858,7 @@ async function start() {
 const ROOM = 4.2, WALL_H = 3.4, Z0 = -.34;
 // the walls are built like a house's, outward from the room: plaster and paint inside, a half brick, render and paint outside (depths in m)
 const WALL = [[0, .015, 'paint'], [.015, .13, 'brick'], [.13, .15, 'paint']], T = .15;
-const CLOCK_SPEED = 10, CLOCK0 = Date.now(), PERF0 = performance.now();   // the wall clock runs 10x fast from the real time at load: an hour in 6 minutes
+const CLOCK_SPEED = 720, CLOCK0 = Date.now(), PERF0 = performance.now();   // the wall clock races from the real time at load: 12 hours a minute (the hour hand laps in 60 s, the minute hand in 5 s)
 const ROOM_LIGHT = .3;                                       // brightness of the room's own studio light (the rack keeps its dim one)
 const SUN = 13;                                               // sunlight through the window (illuminance across the beam)
 // the sun's direction of travel: 36 degrees up, in through the left wall, slanting 20 degrees toward the open front, so the window's four panes land
@@ -825,25 +874,31 @@ const NIGHT = { room: .12, hemi: .6, moon: 1.4, led: 9, desk: 3 };
 const MOON_DIR = ((up, side) => new THREE.Vector3(Math.cos(up) * Math.cos(side), -Math.sin(up), Math.cos(up) * Math.sin(side)))(32 * Math.PI / 180, 35 * Math.PI / 180);
 const MARBLE = 1.2;                                          // ambientCG Marble 021 (CC0, assets/tex/marble-*.jpg): tile size in metres, the floor
 const TILE = { paint: 2, brick: .75 };                       // ambientCG PaintedPlaster017 and Bricks104 (CC0, assets/tex/paint-*, brick-*): metres per tile (a brick course is 7.5 cm)
-// the view out of the window: a clear day with the sun's glow, or a night with a moon and a few stars (the same ones every time)
-function sky(night) {
-  const cv = Object.assign(document.createElement('canvas'), { width: 600, height: 520 }), cx = cv.getContext('2d');
-  const g = cx.createLinearGradient(0, 0, 0, 520);
-  g.addColorStop(0, night ? '#060b1d' : '#5fa6ea'); g.addColorStop(1, night ? '#1b2a52' : '#d6ebfb');
-  cx.fillStyle = g; cx.fillRect(0, 0, 600, 520);
-  const glow = (x, y, r, c) => { const q = cx.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, c); q.addColorStop(1, 'transparent'); cx.fillStyle = q; cx.fillRect(0, 0, 600, 520); };
-  if (night) {
+// the view out of the window over a day, e 0 (day) .. 1 (night). Going dark the sun sets in the west (left), going light it rises in the east
+// (right): the sky passes through a sunset's colours one way and a sunrise's the other. The moon and stars come out last and go first (the
+// same stars every time); the clouds catch the low sun and fade at night
+const SKY = { day: ['#5fa6ea', '#d6ebfb'], set: ['#3b4a8a', '#ff8a4a'], rise: ['#6a6fa8', '#ffb59a'], night: ['#060b1d', '#1b2a52'] };
+function paintSky(cv, e, rising) {
+  const cx = cv.getContext('2d'), W = cv.width, H = cv.height, mid = SKY[rising ? 'rise' : 'set'], f = Math.min(e * 2, 1), f2 = Math.max(e * 2 - 1, 0);
+  const at = k => '#' + new THREE.Color(SKY.day[k]).lerp(new THREE.Color(mid[k]), f).lerp(new THREE.Color(SKY.night[k]), f2).getHexString();
+  const g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, at(0)); g.addColorStop(1, at(1));
+  cx.globalAlpha = 1; cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+  const glow = (x, y, r, c) => { const q = cx.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, c); q.addColorStop(1, 'transparent'); cx.fillStyle = q; cx.fillRect(0, 0, W, H); };
+  const s = rising ? .5 - .65 * e : .5 + .65 * e, sx = W * (.93 - .86 * s), sy = H * (.9 - .78 * Math.sin(Math.PI * s));   // the sun's arc, east to west
+  const sunCol = new THREE.Color('#fff8e1').lerp(new THREE.Color(rising ? '#ffb27a' : '#ff5a1f'), f);
+  if (sy < H) { cx.globalAlpha = 1 - f2; glow(sx, sy, 260 - 80 * f, `#${sunCol.getHexString()}e6`); cx.globalAlpha = f * (1 - f2); cx.fillStyle = `#${sunCol.getHexString()}`; cx.beginPath(); cx.arc(sx, sy, 24, 0, Math.PI * 2); cx.fill(); }
+  const cloud = new THREE.Color('#ffffff').lerp(new THREE.Color(mid[1]), f * .7);
+  cx.globalAlpha = .55 * (1 - f2); cx.fillStyle = `#${cloud.getHexString()}`;
+  for (const [x, y, w] of [[380, 300, 90], [450, 290, 70], [330, 310, 60], [120, 380, 70], [180, 372, 50]]) { cx.beginPath(); cx.ellipse(x, y, w, w * .32, 0, 0, Math.PI * 2); cx.fill(); }
+  const dark = Math.min(Math.max((e - .6) / .4, 0), 1);
+  if (dark) {
     let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
     cx.fillStyle = '#fff';
-    for (let i = 0; i < 70; i++) { cx.globalAlpha = .35 + .65 * rnd(); cx.beginPath(); cx.arc(rnd() * 600, rnd() * 380, .6 + rnd() * 1.4, 0, Math.PI * 2); cx.fill(); }
-    cx.globalAlpha = 1; glow(390, 150, 110, 'rgb(190 210 255 / .35)');
+    for (let i = 0; i < 70; i++) { cx.globalAlpha = dark * (.35 + .65 * rnd()); cx.beginPath(); cx.arc(rnd() * W, rnd() * 380, .6 + rnd() * 1.4, 0, Math.PI * 2); cx.fill(); }
+    cx.globalAlpha = dark; glow(390, 150, 110, 'rgb(190 210 255 / .35)');
     cx.fillStyle = '#f3efe2'; cx.beginPath(); cx.arc(390, 150, 30, 0, Math.PI * 2); cx.fill();
-  } else {
-    glow(140, 90, 260, 'rgb(255 248 225 / .9)');
-    cx.fillStyle = 'rgb(255 255 255 / .55)';
-    for (const [x, y, w] of [[380, 300, 90], [450, 290, 70], [330, 310, 60], [120, 380, 70], [180, 372, 50]]) { cx.beginPath(); cx.ellipse(x, y, w, w * .32, 0, 0, Math.PI * 2); cx.fill(); }
   }
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+  cx.globalAlpha = 1;
 }
 async function buildRoom(renderer, rack) {
   const XL = rack.min.x - .18, X1 = XL + ROOM;                // the left wall 18 cm off the rack's side
@@ -857,10 +912,10 @@ async function buildRoom(renderer, rack) {
     ...['clock', 'lamp', 'box', 'cup', 'spraycan', 'tube', 'paintbrush-1', 'paintbrush-2', 'paintbrush-3'].map(f => loader.loadAsync(new URL(`${f}.glb`, ASSETS).href).then(g => g.scene))]);
 
   // white marble on the floor; the walls painted white (see WALL), so the things in the room do the talking
-  const tl = new THREE.TextureLoader();
+  const tl = new THREE.TextureLoader(), texLoads = [];        // the room rises only once these are in: an untextured floor shows brown under the lamp
   const surface = (k, rx, ry, roughness, n) => {             // a texture set, repeated rx x ry times over each face's UVs
     const [map, normalMap, roughnessMap] = ['diff', 'nor', 'rough'].map(m => {
-      const t = tl.load(new URL(`tex/${k}-${m}.jpg`, ASSETS).href);
+      let t; texLoads.push(new Promise(r => { t = tl.load(new URL(`tex/${k}-${m}.jpg`, ASSETS).href, r, undefined, r); }));   // a failed one still lets the room in
       t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; return t;
     });
     map.colorSpace = THREE.SRGBColorSpace;
@@ -905,7 +960,7 @@ async function buildRoom(renderer, rack) {
     o.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); o.userData.mats.push(m.material); } });
   }
 
-  // the window: a painted frame and sash, thin glass, and a sky outside it (see sky())
+  // the window: a painted frame and sash, thin glass, and a sky outside it (see paintSky())
   const win = new THREE.Group(), trimM = new THREE.MeshStandardMaterial({ color: '#f1ede4', roughness: .6 });
   const bar = (dx, dy, dz, x, y, z, m = trimM) => { const o = new THREE.Mesh(new THREE.BoxGeometry(dx, dy, dz), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; win.add(o); };
   for (const s of [-1, 1]) {
@@ -918,9 +973,10 @@ async function buildRoom(renderer, rack) {
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(WIN.w, WIN.h).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d7e8f2', roughness: .05, transparent: true, opacity: .14, depthWrite: false,
     stencilWrite: true, stencilRef: 1, stencilZPass: THREE.ReplaceStencilOp }));   // marks the visible glass for the sky
   glass.position.set(XL - T / 2 + .004, WIN.y, WIN.z); win.add(glass);
-  const days = sky(false), nights = sky(true);
+  const skyCv = Object.assign(document.createElement('canvas'), { width: 600, height: 520 }), skyTex = new THREE.CanvasTexture(skyCv);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
   // the sky: big enough for a steep look through the window, drawn after the glass and only where it marked, so it never shows past the wall's edge
-  const outside = new THREE.Mesh(new THREE.PlaneGeometry(8, 5).rotateY(Math.PI / 2), new THREE.MeshBasicMaterial({ map: days, toneMapped: false,
+  const outside = new THREE.Mesh(new THREE.PlaneGeometry(8, 5).rotateY(Math.PI / 2), new THREE.MeshBasicMaterial({ map: skyTex, toneMapped: false,
     transparent: true, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc }));
   outside.position.set(XL - T - .8, WIN.y, WIN.z); outside.renderOrder = 1; outside.raycast = () => {};   // a click past the window's edge is on the page, not the sky
 
@@ -958,6 +1014,7 @@ async function buildRoom(renderer, rack) {
   const mc = moonPatch.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / 4), mxs = moonPatch.map(q => q.x);
   const moonUp = bounce('#9db8ff', mc.x, mc.z, Math.max(...mxs) - Math.min(...mxs), WIN.w * 1.3, NIGHT.moon * -MOON_DIR.y);
   const hemi = new THREE.HemisphereLight('#6d87c8', '#05070c', 0);
+  hemi.position.set(0, 100, 0);                              // its 'up' is its world position seen from the origin: high, so the rise from below can't tip it over (a brown floor)
 
   // Palatial's wall clock (CC BY 4.0), 1.6x its real 25 cm: high on the left wall. Its scan has the hands painted on the dial,
   // so a dial of our own covers it, with hands that turn (see hands())
@@ -1043,9 +1100,11 @@ async function buildRoom(renderer, rack) {
     }
     bulbs.instanceColor.needsUpdate = true; glows.forEach(l => l.color.multiplyScalar(1 / 12));
   };
-  const setNight = n => {                                    // 0 day .. 1 night
-    const e = n * n * (3 - 2 * n);
-    outside.material.map = e > .5 ? nights : days;           // the view: day, or night with the moon
+  const SUN_COL = new THREE.Color('#fff1d6'), SUN_LOW = new THREE.Color('#ff9a5a');
+  const setNight = (n, to = n) => {                         // 0 day .. 1 night; to: where it is heading (below n: back to day, a sunrise)
+    const e = n;                                            // linear, in step with the page's 3 s fade (style.css .theme-fading)
+    paintSky(skyCv, e, to < n); skyTex.needsUpdate = true;   // the view: the sun setting or rising, then the moon
+    sun.color.copy(SUN_COL).lerp(SUN_LOW, Math.sin(Math.PI * e));   // the low sun's warm light, either way
     sun.intensity = SUN * (1 - e); sunUp.intensity = sunUp.userData.full * (1 - e); sun.visible = sunUp.visible = e < 1;
     moon.intensity = NIGHT.moon * e; moonUp.intensity = moonUp.userData.full * e; moon.visible = moonUp.visible = e > 0;
     hemi.intensity = NIGHT.hemi * e;
@@ -1062,6 +1121,7 @@ async function buildRoom(renderer, rack) {
     win, winTop: new THREE.Vector3(XL + .05, wy1 + .12, WIN.z),
     sunCheck: { toFloor, XL, T, WIN, wy0, wy1, wz0, wz1 } };        // the window and the sun's path, for the scripted light checks (?probe)
   root.add(outside);                                         // after the bounds and the envMap: unlit, and outside the room
+  await Promise.all(texLoads);
   return out;
 }
 
@@ -1091,9 +1151,8 @@ function buildStalk() {
   return g;
 }
 
-// the record shelf: a white 2 x 2 cube shelf (after the one in ~/Downloads/casier-pour-disques, in my own geometry), my Spotify top 5 standing in its
-// top-left cube, number 1 in front and each one behind on a step 8 mm higher so their top edges show, and a turntable on top. Plain filler records in
-// two other cubes. In metres, its floor centre at the origin, its front to +z
+// the record shelf: a white 2 x 2 cube shelf (after the one in ~/Downloads/casier-pour-disques, in my own geometry), my Spotify top 40 standing on their
+// side, 10 to a cube, and a turntable on top. In metres, its floor centre at the origin, its front to +z
 function buildVinyl(tracks, tl, layout) {
   const mat = (color, roughness, metalness = 0) => new THREE.MeshStandardMaterial({ color, roughness, metalness });
   const black = mat('#0d0d0d', .55), steel = mat('#c4c7cc', .3, 1), white = mat('#d2b48c', .55);   // pale oak: white vanishes against the room's white marble
@@ -1107,6 +1166,7 @@ function buildVinyl(tracks, tl, layout) {
   const cubes = [[H / 2 + T / 2, H - T], [T, H / 2 - T / 2]].flatMap(([y0, y1]) => [[-W / 2 + T, -T / 2], [T / 2, W / 2 - T]].map(([x0, x1]) => ({ x0, x1, y0, y1, z0: -D / 2 + .006, z1: D / 2, recs: [] })));
   const sleeve = () => box(.314, .314, .004).translate(0, .157, -.002);   // origin on its bottom front edge, where it leans
   grp.add(top);
+  const PER = layout.length / 4;                            // records per cube, as scripts/settle-records.py stood them
   const sleeves = tracks.map((t, k) => {
     // the cover printed front and back; the edges and spine in the cover's own average colour, so a stack reads in its covers' colours
     const edge = mat('#808080', .7), art = new THREE.MeshStandardMaterial({ roughness: .6 });
@@ -1118,8 +1178,8 @@ function buildVinyl(tracks, tl, layout) {
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8; art.map = map;
     const s = add(top, sleeve(), [edge, edge, edge, edge, art, art], ...layout[k].p);   // on its side, spine out, where the physics left it
     s.quaternion.set(...layout[k].q);
-    s.userData = { i: k, c: k / 5 | 0, j: k % 5, art, edge, map, p0: s.position.clone(), q0: s.quaternion.clone(), p: 0 };   // p: how far it is pulled out (stepVinyl)
-    cubes[k / 5 | 0].recs.push(s);
+    s.userData = { i: k, c: k / PER | 0, j: k % PER, art, edge, map, p0: s.position.clone(), q0: s.quaternion.clone(), p: 0 };   // p: how far it is pulled out (stepVinyl)
+    cubes[k / PER | 0].recs.push(s);
     return s;
   });
   // the record player, my own geometry after a classic direct-drive deck, at the shelf top's right edge (its side 2 cm in): a walnut plinth on four
@@ -1145,7 +1205,8 @@ function buildVinyl(tracks, tl, layout) {
   const disc = new THREE.Group(); disc.visible = false; top.add(disc);
   add(disc, cyl(.15, .003), mat('#0d0d0d', .35), 0, 0, 0);
   const label = add(disc, new THREE.CircleGeometry(.05, 48), new THREE.MeshStandardMaterial({ roughness: .6 }), 0, .0016, 0); label.rotation.x = -Math.PI / 2;
-  // tonearm: pivot at the back right, resting toward the front; on the record its stylus sits on the outer groove (14.2 cm out)
+  // tonearm: pivot at the back right, resting toward the front; on the record its stylus drops on the outer groove (14.2 cm out) and tracks in
+  // to the run-out (6.2 cm) over the song
   const P = [.16, -.12], L = .24, C = PC, AY = TOPY + .044;   // AY: the arm's height, its cartridge just on a record on the mat
   add(pl, cyl(.026, .012), dark, P[0], TOPY + .006, P[1]);   // the bearing housing, its post and gimbal ring
   add(pl, cyl(.008, AY - TOPY - .01), steel, P[0], (TOPY + AY) / 2, P[1]);
@@ -1159,8 +1220,11 @@ function buildVinyl(tracks, tl, layout) {
   add(arm, box(.017, .004, .032).rotateY(-.25), alu, 0, -.004, L);   // headshell, its cartridge and finger lift
   add(arm, box(.012, .012, .018), black, 0, -.012, L);
   add(arm, box(.002, .002, .018).rotateY(.6), alu, .012, -.001, L + .012);
-  let lo = -1.5, hi = 0;                                     // the swing that puts the stylus 14.2 cm from the spindle
-  for (let n = 0; n < 30; n++) { const m = (lo + hi) / 2; Math.hypot(P[0] + L * Math.sin(m) - C[0], P[1] + L * Math.cos(m) - C[1]) > .142 ? hi = m : lo = m; }
+  const swingAt = r => {                                    // the swing that puts the stylus r from the spindle (between the rest and straight at the spindle)
+    let lo = Math.atan2(C[0] - P[0], C[1] - P[1]), hi = 0;
+    for (let n = 0; n < 30; n++) { const m = (lo + hi) / 2; Math.hypot(P[0] + L * Math.sin(m) - C[0], P[1] + L * Math.cos(m) - C[1]) > r ? hi = m : lo = m; }
+    return lo;
+  };
   // the display (hover): upright, all turned the same angle from side-on toward you, spread across the cube's width. The angle is the steepest that
   // keeps DISPLAY.margin off the side walls and DISPLAY.gap between neighbours (measured square to them): n - 1 gaps of (gap + 4 mm) / cos(a),
   // plus one sleeve's width across, sin(a) * 31.4 cm (+ its thickness), must fit the cube's width
@@ -1171,7 +1235,7 @@ function buildVinyl(tracks, tl, layout) {
     const step = (DISPLAY.gap + .004) / Math.cos(a), x = c.x0 + DISPLAY.margin + .157 * Math.sin(a) + .004 * Math.cos(a), z = (c.z0 + c.z1) / 2;
     c.display = { angle: a, q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2 - a), at: c.recs.map((_, j) => new THREE.Vector3(x + j * step, c.y0, z)) };
   }
-  return { grp, top, cubes, sleeves, disc, label, platter, arm, swing: lo, player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
+  return { grp, top, cubes, sleeves, disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
 }
 
 function softRoom(renderer) {

@@ -10,8 +10,15 @@ if (ctx) {
   const coarse = matchMedia('(pointer: coarse)').matches;          // phones: no cursor to follow, so half the frame rate is enough
   // the lines' colour follows the site's theme (--wave-ink in style.css: black on the yellow field, yellow on the dark one)
   const inkOf = () => getComputedStyle(document.documentElement).getPropertyValue('--wave-ink').trim() || '#0D0D0D';
-  let ink = inkOf();
-  new MutationObserver(() => { ink = inkOf(); if (!raf) draw(performance.now()); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  // a theme switch blends the old colour into the new over 3 s, linear, in step with the room's sky (rack.js) and the field (style.css)
+  const rgb = c => { const n = parseInt(c.replace('#', '').replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3'), 16); return [n >> 16, n >> 8 & 255, n & 255]; };
+  let ink = inkOf(), fade = null;                                   // fade: { from, to, t0 } while it blends
+  const inkAt = t => { if (!fade) return ink; const k = Math.min((t - fade.t0) / 3000, 1); if (k >= 1) fade = null; return `rgb(${fade ? fade.from.map((a, i) => Math.round(a + (fade.to[i] - a) * k)).join(' ') : rgb(ink).join(' ')})`; };
+  new MutationObserver(() => {
+    const to = inkOf(), now = performance.now();
+    if (!reduce && /^#[0-9a-f]{3,6}$/i.test(to) && /^#[0-9a-f]{3,6}$|^rgb/i.test(ink)) { const cur = inkAt(now); fade = { from: cur.startsWith('#') ? rgb(cur) : cur.match(/\d+/g).map(Number), to: rgb(to), t0: now }; }
+    ink = to; if (!raf) draw(now);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   let lines = [], W = 0, H = 0, raf = 0, visible = true;
   const mouse = { x: -10, y: 0, lx: 0, ly: 0, sx: 0, sy: 0, vs: 0, a: 0, set: false };
 
@@ -46,19 +53,21 @@ if (ctx) {
       const px = p.x + Math.cos(m) * 12, py = p.y + Math.sin(m) * 6;
       j ? ctx.lineTo(px + p.cx, py + p.cy) : ctx.moveTo(px, py);
     });
-    ctx.strokeStyle = ink; ctx.globalAlpha = .22; ctx.lineWidth = 1; ctx.stroke();   // faint: full black drowns the name and copy
+    ctx.strokeStyle = inkAt(t); ctx.globalAlpha = .22; ctx.lineWidth = 1; ctx.stroke();   // faint: full black drowns the name and copy
   }
 
   let odd = false;
-  const tick = t => { if (!coarse || (odd = !odd)) draw(t); raf = requestAnimationFrame(tick); };
+  const hero = canvas.closest('.hero') ?? document.documentElement, blurred = () => +hero.style.getPropertyValue('--dof') > .5;
+  const tick = t => { if (!(coarse || blurred()) || (odd = !odd)) draw(t); raf = requestAnimationFrame(tick); };   // half rate on phones and under the close-ups' blur
   function wake() {
     cancelAnimationFrame(raf); raf = 0;
-    if (reduce) draw(0); else if (visible && !document.hidden) raf = requestAnimationFrame(tick);
+    if (reduce) draw(0); else if (visible && !document.hidden && !document.documentElement.classList.contains('portal-on')) raf = requestAnimationFrame(tick);   // hidden behind an open writeup
   }
 
   new ResizeObserver(() => { setLines(); if (!raf) draw(performance.now()); }).observe(canvas);
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(canvas);
   document.addEventListener('visibilitychange', wake);
+  new MutationObserver(wake).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   addEventListener('pointermove', e => {                    // canvas ignores pointer events, so listen on the window
     const r = canvas.getBoundingClientRect();
     mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
