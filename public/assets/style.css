@@ -1,9 +1,11 @@
-/* POPH-style dark portfolio: primary-yellow hero, black page, original black rack. */
+/* POPH-style portfolio: primary-yellow hero, original black rack; a black page in dark mode, a cream one in light mode. */
 :root {
   --yellow: #FFD400;
   --yellow-deep: #D9A300;
-  --black: #0D0D0D;
-  --ink: #F5F0E8;
+  --black: #0D0D0D;                   /* fixed: text on the yellow, the black chips over the 3D scene */
+  --cream: #F5F0E8;
+  --page: var(--black);               /* these two flip with the theme (below) */
+  --ink: var(--cream);
   --pink: #FF2D78;
   --lime: #BFFF00;
   --blue: #0057FF;
@@ -12,12 +14,32 @@
   --display: 'Bebas Neue', Impact, 'Arial Narrow', sans-serif;
   --sans: 'Space Grotesk', system-ui, sans-serif;
   --gutter: clamp(1rem, 4vw, 3.5rem);
+  --wave-ink: var(--black);           /* the hero's lines (waves.js) */
   color-scheme: dark;
 }
+/* light mode (assets/theme.js sets data-theme from the toggle or the system): the page inverts to cream with black text;
+   the accents darken where they would vanish on cream. With no script the page stays dark */
+:root[data-theme="light"] {
+  --page: var(--cream); --ink: var(--black);
+  --hair: rgb(13 13 13 / .12); --muted: rgb(13 13 13 / .66);
+  --lime: #3F8500; --accent: var(--blue);
+  color-scheme: light;
+}
+[data-theme="light"] :is(:focus-visible, .rack-tip.is-focus, button.room-tip:focus-visible) { outline-color: var(--blue); }
+[data-theme="light"] .article-body h2 { color: var(--volt); }   /* pacmap's pale --volt-text is for the black page */
+/* dark mode's landing page: a near-black field, the name in yellow, cream ink and faint yellow lines (light mode keeps the yellow field) */
+[data-theme="dark"] { --wave-ink: var(--yellow); }
+[data-theme="dark"] .hero { background: radial-gradient(ellipse 120% 95% at 50% 45%, #161616 40%, #060606 100%); color: var(--cream); }
+[data-theme="dark"].room-on .wordmark { color: var(--yellow); }   /* both on <html> */
+[data-theme="dark"] :is(.nav, .scan-on .nav.is-scrolled) { color: var(--cream); }
+[data-theme="dark"] .hero .btn { --fg: var(--cream); --bg: var(--black); }
+[data-theme="dark"] .hero :focus-visible { outline-color: var(--yellow); }
+[data-theme="dark"] .scroll-cue { background: rgb(245 240 232 / .2); }
+[data-theme="dark"] .scroll-cue span { background: var(--cream); }
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 body {
-  margin: 0; background: var(--black); color: var(--ink);
+  margin: 0; background: var(--page); color: var(--ink);
   font: 400 clamp(1rem, 1.15vw, 1.2rem)/1.55 var(--sans);
   -webkit-font-smoothing: antialiased; overflow-x: clip;
 }
@@ -29,7 +51,7 @@ img, video { max-width: 100%; display: block; }
 
 /* ---- shared controls ---- */
 .btn {
-  --fg: var(--ink); --bg: var(--black);
+  --fg: var(--ink); --bg: var(--page);
   display: inline-block; padding: 1.1rem 2.6rem; border: 2px solid var(--fg); color: var(--fg);
   font: 700 .75rem/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; text-decoration: none;
   transition: background-color .2s, color .2s;
@@ -57,6 +79,12 @@ img, video { max-width: 100%; display: block; }
 :is(.nav nav a, .link, .writeup-top .back) { position: relative; }
 :is(.nav nav a, .link, .writeup-top .back)::after { content: ''; position: absolute; inset: -.875rem -.25rem; }
 .nav nav a:hover { text-decoration: underline; text-underline-offset: .4em; text-decoration-thickness: 1.5px; }
+/* the theme toggle: a sun in dark mode (to go light), a moon in light mode; 44px to tap */
+.theme-toggle { display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem; margin: -.75rem -.75rem -.75rem 0; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+.theme-toggle svg { width: 1.15rem; height: 1.15rem; }
+.theme-toggle .moon, [data-theme="light"] .theme-toggle .sun { display: none; }
+[data-theme="light"] .theme-toggle .moon { display: block; }
+.nav nav { align-items: center; }
 
 /* ---- hero: yellow field; the rack is the far layer, the wordmark and copy sit in front (rack.js sets the --mx/--my text parallax) ---- */
 .hero {
@@ -84,11 +112,36 @@ img, video { max-width: 100%; display: block; }
 .has-3d .stage { display: block; }
 .rack-tip {
   position: absolute; z-index: 2; pointer-events: none; translate: 18px -50%;
-  background: var(--black); color: var(--ink); padding: .6rem .85rem;
+  background: var(--black); color: var(--cream); padding: .6rem .85rem;
   font: 700 .72rem/1.2 var(--sans); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
 }
 .rack-tip.is-focus { position: fixed; left: var(--gutter); top: auto; bottom: 2rem; translate: none; outline: 3px solid var(--lime); outline-offset: 3px; }
 .rack-tip small { display: block; font-weight: 500; letter-spacing: .08em; text-transform: none; color: var(--yellow); margin-top: .25rem; font-size: .78rem; }
+/* the room: a label stands above its object, centred on it */
+.room-tip { translate: -50% calc(-100% - 14px); text-align: center; white-space: normal; width: max-content; max-width: min(24rem, calc(100vw - 2rem)); }
+.room-tip[data-at="box"] { translate: -50% 14px; }   /* below the box: above it, it would cover the rack */
+/* the record shelf's Spotify embed, driven from rack.js and never seen: inside the viewport but transparent, behind everything and unclickable
+   (off screen or display: none, the browser throttles the frame and it never starts); the now-playing label credits it */
+.spotify-host { position: fixed; left: 0; bottom: 0; z-index: -1; width: 300px; height: 80px; opacity: 0; pointer-events: none; }
+.spotify-host iframe { width: 100%; height: 100%; border: 0; }
+/* with a mouse the room's labels are the cursor's tooltip (src/components/room-tooltip.tsx); in the scene they show only for keyboard focus */
+.room-tip.quiet:not(:focus-visible) { opacity: 0; pointer-events: none; }
+/* YouTube's player (whole songs), at the smallest size YouTube allows (200 x 200): shown at the stage's corner while a record plays, as its terms ask */
+.yt-host { position: absolute; z-index: 3; left: 1rem; bottom: 1rem; width: 200px; height: 200px; border: 2px solid var(--yellow); background: var(--black); opacity: 0; pointer-events: none; transition: opacity .3s; }
+.yt-host.on { opacity: 1; pointer-events: auto; }
+.yt-host iframe { display: block; width: 100%; height: 100%; border: 0; }
+/* phones too: the bottom-left corner, over bare floor (above the turntable, a phone snapped nearby taps onto the player) */
+/* for screen readers only: the record now playing (YouTube's player shows it on screen), the contact section's heading */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* the shelf's close-up (a zoom, not a scroll): the name and hero text go, as in any close-up */
+.hero.is-zoomed :is(.wordmark, .hero-copy, .scroll-cue) { opacity: 0 !important; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
+button.room-tip { pointer-events: auto; cursor: pointer; border: 0; }
+button.room-tip:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+.room-on .wordmark { color: var(--black); mix-blend-mode: normal; }   /* the blend needs the black rack behind the name; the room's walls are pale */
+@media (min-width: 52.01rem) {                              /* wide only: phones keep their own size (24vw, below) */
+  .room-on .wordmark .last { font-size: clamp(6.5rem, 15vw, 15rem); }
+  .room-on .wordmark .first { font-size: clamp(2.5rem, 5.5vw, 6rem); }
+}
 /* click on a server: a ring spreads from the cursor */
 .ripple { position: absolute; z-index: 2; width: 48px; height: 48px; margin: -24px 0 0 -24px; border: 2px solid var(--yellow); border-radius: 50%; pointer-events: none; animation: ripple .45s ease-out forwards; }
 @keyframes ripple { from { scale: 0; opacity: 1; } to { scale: 1; opacity: 0; } }
@@ -101,12 +154,6 @@ img, video { max-width: 100%; display: block; }
 .hint { display: none; margin: 1.5rem 0 0; font: 600 .72rem/1.4 var(--sans); letter-spacing: .14em; text-transform: uppercase; }
 .has-3d .hint { display: block; }
 
-.counter {
-  position: absolute; z-index: 2; right: var(--gutter); bottom: 3.5rem; margin: 0;
-  font: 600 .72rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase;
-}
-.counter b { font: 400 2.6rem/1 var(--display); letter-spacing: 0; vertical-align: -.35em; }
-.counter span { display: block; text-align: right; margin-top: .4rem; }
 .scroll-cue { position: absolute; left: 50%; bottom: 0; width: 1.5px; height: 4rem; background: rgb(13 13 13 / .2); overflow: hidden; }
 .scroll-cue span { position: absolute; inset: 0; background: var(--black); animation: scrollDrop 1.6s cubic-bezier(.6, 0, .3, 1) infinite; }
 @keyframes scrollDrop { from { translate: 0 -100%; } to { translate: 0 100%; } }
@@ -135,9 +182,12 @@ img, video { max-width: 100%; display: block; }
 .scan-on .footer { scroll-snap-align: end; }
 .scan-on .marquee { display: none; }
 /* the servers carry this content now; it stays for screen readers and keyboard (focus moves the camera) */
-.scan-on :is(#projects, #skills, #contact) {
+.scan-on :is(#projects, #contact) {
   position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
+
+/* last stop: the contact line comes in over the pulled-back rack (rack.js sets --end, 0 → 1); black on the yellow, yellow on the rack.
+   rack.js sets --rl / --rr to the rack's edges inside the line. No blend mode: it did not paint in every browser */
 
 /* ---- marquee ---- */
 .marquee { overflow: hidden; border-block: 1px solid var(--hair); padding: 1.25rem 0; }
@@ -185,45 +235,15 @@ img, video { max-width: 100%; display: block; }
 .drop-panel.has-media video { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
 .drop-panel.has-media .panel-cta { padding: 1.25rem 1.5rem; color: var(--ink); }
 
-/* skills */
-.skills { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hair); }
-.skills li {
   display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr) 9rem; gap: 1rem 2rem; align-items: baseline;
   padding: 1.1rem 0; border-bottom: 1px solid var(--hair);
 }
-.skills a { font: 700 .82rem/1.3 var(--sans); letter-spacing: .14em; text-transform: uppercase; text-decoration: none; }
-.skills a:hover { color: var(--yellow); }
-.skills span { color: var(--muted); }
-.skills em { font: 600 .72rem/1 var(--sans); letter-spacing: .15em; text-transform: uppercase; font-style: normal; justify-self: end; white-space: nowrap; }
-.skills em::before { content: ''; display: inline-block; width: .55rem; height: .55rem; margin-right: .55rem; background: var(--lime); border-radius: 50%; }
-.skills [data-status="wip"] em::before { background: var(--yellow); }
 
-/* CTA: scattered words around the sticker */
+/* contact: the links */
 .cta {
   position: relative; display: grid; place-items: center; gap: 3rem;
   padding: clamp(6rem, 12vw, 11rem) var(--gutter) clamp(4rem, 8vw, 7rem); overflow: hidden;
 }
-.cta-words {
-  display: grid; grid-template-columns: repeat(3, auto); grid-template-areas: "w1 . w2" ". s ." "w3 . w4";
-  width: 100%; margin: 0; font: 400 clamp(4.5rem, 12vw, 13rem)/.86 var(--display); text-transform: uppercase;
-}
-.cta-words span { display: block; }
-.w1 { grid-area: w1; }
-.w2 { grid-area: w2; justify-self: end; color: transparent; -webkit-text-stroke: 2px var(--ink); }
-.w3 { grid-area: w3; color: var(--yellow); }
-.w4 { grid-area: w4; justify-self: end; align-self: end; font-size: .55em; }
-.sticker {
-  position: absolute; top: 50%; left: 50%; translate: -50% -50%; z-index: 1;
-  width: clamp(11rem, 20vw, 17rem); aspect-ratio: 1; text-decoration: none; color: var(--black);
-  filter: drop-shadow(0 8px 0 var(--pink)); animation: wobble 4s ease-in-out infinite;
-}
-.sticker span {
-  display: grid; place-items: center; width: 100%; height: 100%; background: var(--lime); text-align: center;
-  font: 400 clamp(1.6rem, 2.6vw, 2.4rem)/1 var(--display); text-transform: uppercase;
-  clip-path: polygon(50% 0%, 59% 13%, 75% 7%, 77% 23%, 93% 25%, 87% 41%, 100% 50%, 87% 59%, 93% 75%, 77% 77%, 75% 93%, 59% 87%, 50% 100%, 41% 87%, 25% 93%, 23% 77%, 7% 75%, 13% 59%, 0% 50%, 13% 41%, 7% 25%, 23% 23%, 25% 7%, 41% 13%);
-}
-.sticker:hover { animation-play-state: paused; scale: 1.06; }
-@keyframes wobble { 0%, 100% { rotate: -6deg; } 50% { rotate: 6deg; } }
 .cta-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.25rem 2.5rem; margin: 0; }
 .cta-links .link:last-child { text-transform: none; letter-spacing: .02em; }
 
@@ -248,28 +268,28 @@ img, video { max-width: 100%; display: block; }
 }
 
 /* portal: only the rack is left on screen while the camera flies into a server's lid */
-.portal-on :is(.wordmark, .hero-copy, .counter, .scroll-cue, .nav) { opacity: 0; transition: opacity .3s; }
+.portal-on :is(.wordmark, .hero-copy, .scroll-cue, .nav) { opacity: 0; transition: opacity .3s; }
 .portal-on .stage { filter: none; }
 .portal-on .waves { opacity: 0; }
 .portal-on .stage::after { opacity: 0; }
 @view-transition { navigation: auto; }
 
 /* ---- writeups ---- */
-.writeup-top {
-  display: flex; justify-content: space-between; align-items: center; padding: 1.25rem var(--gutter);
-  background: var(--volt); color: var(--on-volt, var(--black));
-}
-.writeup-top .back { font: 700 .75rem/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; text-decoration: none; }
+.writeup-top { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem var(--gutter); }
+.writeup-top .back { margin-left: auto; margin-right: 1.25rem; font: 700 .75rem/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; text-decoration: none; }
 .writeup-top .back:hover { text-decoration: underline; text-underline-offset: .3em; }
 .writeup-top .mark { font-size: 1.6rem; }
-.writeup-top :focus-visible, .article-header :focus-visible { outline-color: var(--on-volt, var(--black)); }
-.article-header { background: var(--volt); color: var(--on-volt, var(--black)); padding: clamp(3rem, 8vw, 7rem) var(--gutter) clamp(2.5rem, 5vw, 4rem); }
-.article-title { margin: 0 0 1.5rem; max-width: 14ch; font: 400 clamp(3.5rem, 8vw, 8rem)/.88 var(--display); text-transform: uppercase; letter-spacing: -.01em; }
-.article-dek { margin: 0 0 2rem; max-width: 46ch; font: 500 clamp(1.05rem, 1.6vw, 1.35rem)/1.4 var(--sans); }
-.article-header .chips li { border-color: currentColor; color: inherit; }
+/* faceplate: the home-page rack unit at page scale; LED + number rail left of the title */
+.article-header { display: grid; grid-template-columns: auto 1fr; column-gap: clamp(.75rem, 2vw, 1.5rem); margin: 0 var(--gutter); padding: clamp(1.5rem, 4vw, 3rem); background: #151515; border: 1px solid var(--hair); border-radius: 4px; box-shadow: inset 0 0 0 4px var(--black), inset 0 0 0 5px var(--hair);
+  --ink: var(--cream); --hair: rgb(245 240 232 / .08); --muted: rgb(245 240 232 / .62); color: var(--ink); }   /* a rack faceplate: dark in both themes */
+.article-header > :not(.unit, .article-title) { grid-column: 1 / -1; }
+.unit { display: flex; flex-direction: column; align-items: center; gap: .6rem; padding-top: .55rem; font: 700 1rem/1 var(--sans); color: var(--muted); }
+.led { width: .8rem; height: .8rem; border-radius: 50%; background: var(--volt); }
+.article-title { margin: 0 0 1.25rem; max-width: 20ch; font: 400 clamp(3rem, 8vw, 6rem)/.9 var(--display); text-transform: uppercase; letter-spacing: -.01em; }
+.article-dek { margin: 0 0 1.75rem; max-width: 46ch; font: 500 clamp(1.05rem, 1.6vw, 1.35rem)/1.4 var(--sans); color: var(--ink); }
 .article-body { max-width: 68ch; margin: 0 auto; padding: clamp(3rem, 6vw, 5rem) var(--gutter) 5rem; box-sizing: content-box; }
 .article-body h2 { margin: 3rem 0 1rem; font: 400 clamp(2.25rem, 4vw, 3.25rem)/.95 var(--display); text-transform: uppercase; color: var(--volt-text, var(--volt)); }
-.article-body p, .article-body li { color: rgb(245 240 232 / .86); }
+.article-body p, .article-body li { color: color-mix(in srgb, var(--ink) 86%, transparent); }
 .article-body a { text-underline-offset: .2em; }
 .article-body strong { color: var(--ink); }
 .article-body figure { margin: 2.5rem 0; }
@@ -286,18 +306,11 @@ img, video { max-width: 100%; display: block; }
   .wordmark .last { font-size: 24vw; }
   .stage { position: relative; top: auto; width: auto; height: 34rem; max-height: 72svh; margin: -16vw calc(-1 * var(--gutter)) 0; }
   .hero-copy { margin-top: 1.5rem; }
-  .counter { bottom: 2rem; }
   .scroll-cue { display: none; }
   .scan-on .hero-copy { margin-top: auto; }
   .drop { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
   .num { font-size: 7rem; }
   .drop-panel { min-height: 11rem; }
-  .skills li { grid-template-columns: minmax(0, 1fr) auto; }
-  .skills span { grid-column: 1 / -1; grid-row: 2; }
-  .cta-words { grid-template-columns: 1fr 1fr; grid-template-areas: "w1 w2" "s s" "w3 w3" "w4 w4"; font-size: 22vw; }
-  .cta-words::after { content: ''; grid-area: s; height: 13rem; }
-  .w4 { justify-self: start; font-size: .6em; }
-  .sticker { top: 40%; width: 11rem; }
 }
 @media (max-width: 26rem) {
   .nav nav { gap: .7rem; }
@@ -312,7 +325,7 @@ img, video { max-width: 100%; display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .marquee-track, .sticker, .scroll-cue span { animation: none; }
+  .marquee-track, .scroll-cue span { animation: none; }
   .marquee-track { flex-wrap: wrap; width: auto; padding: 0 var(--gutter); }
   .marquee-track > :nth-child(n+17) { display: none; }
   .nav, .btn { transition: none; }

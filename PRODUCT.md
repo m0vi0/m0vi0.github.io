@@ -17,7 +17,7 @@ The page must survive both a 30-second skim and a careful read.
 
 ## Product Purpose
 
-Personal portfolio of Mervin Sequeira, a 2026 B.E. CSE (AI & ML) graduate in Mangaluru, India, seeking a junior pentest / VAPT role. Success: a reader can name him, the role he wants and one thing he built within one screen, can download his resume, and can verify claims through linked work.
+Personal portfolio of Mervin Sequeira, a 2026 B.E. CSE (AI & ML) graduate seeking a junior pentest / VAPT role. Success: a reader can name him, the role he wants and one thing he built within one screen, can download his resume, and can verify claims through linked work.
 
 ## Positioning
 
@@ -40,7 +40,7 @@ Static site on GitHub Pages (`m0vi0.github.io`), plain HTML/CSS, no build step, 
 
 ## Evidence on Hand
 
-- Resume: `assets/resume.pdf` (copied from `~/Documents/Mervin_Sequeira_Resume.pdf`, Sep 2026; user approved publishing it with phone number).
+- No resume on the site (Nov 2026): it carried a phone number. Contact is email, LinkedIn and GitHub.
 - PacMap source: https://github.com/m0vi0/pacmap (public). Demo video: `assets/demo.mp4`.
 - Offensive training (from resumes, user approved citing): HTB Academy CPTS path in progress (Footprinting and Network Enumeration with Nmap completed; web exploitation, shells & payloads, pivoting, privilege escalation in progress); HTB Season 11, 3 machines owned (Connected, DevHub, Reactor); PortSwigger Web Security Academy labs (access control, request manipulation, SSRF); bug bounty recon on Bugcrowd programs with subfinder and ffuf; CompTIA Network+ in progress.
 - Defensive work: multi-node Wazuh SIEM (manager + 2 agents, Raspberry Pi 3B+ and HP laptop); custom Kismet deauth rules, false positives reduced ~40% by threshold tuning; Uptime Kuma and Netdata monitoring; Tailscale subnet-router failover.
@@ -48,7 +48,7 @@ Static site on GitHub Pages (`m0vi0.github.io`), plain HTML/CSS, no build step, 
 
 ## Product Principles
 
-1. Name, role and resume are reachable in one screen.
+1. Name, role and a way to get in touch are reachable in one screen.
 2. Every skill claim points at evidence: a module, a lab, a repo or a writeup.
 3. Honest status beats impressive framing.
 4. Writeups say what he did, in first person, with links that can be checked.

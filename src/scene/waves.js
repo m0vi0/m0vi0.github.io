@@ -8,7 +8,10 @@ if (ctx) {
   const noise = createNoise2D(), GAP = 8;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const coarse = matchMedia('(pointer: coarse)').matches;          // phones: no cursor to follow, so half the frame rate is enough
-  const ink = getComputedStyle(document.documentElement).getPropertyValue('--black').trim() || '#0D0D0D';
+  // the lines' colour follows the site's theme (--wave-ink in style.css: black on the yellow field, yellow on the dark one)
+  const inkOf = () => getComputedStyle(document.documentElement).getPropertyValue('--wave-ink').trim() || '#0D0D0D';
+  let ink = inkOf();
+  new MutationObserver(() => { ink = inkOf(); if (!raf) draw(performance.now()); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   let lines = [], W = 0, H = 0, raf = 0, visible = true;
   const mouse = { x: -10, y: 0, lx: 0, ly: 0, sx: 0, sy: 0, vs: 0, a: 0, set: false };
 
