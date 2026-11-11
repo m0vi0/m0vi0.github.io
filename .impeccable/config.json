@@ -23,6 +23,16 @@
           "index.html"
         ],
         "createdAt": "2026-11-09T07:53:40.154Z"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "assets/style.css",
+          "index.html"
+        ],
+        "createdAt": "2026-11-10T14:08:41.467Z",
+        "reason": "Agent: .outro p uses hard colour stops (black / yellow / black, no blend) clipped to the text so the contact line stays readable where the rack passes behind it; it replaced mix-blend-mode, which did not paint in the user's browser"
       }
     ]
   }

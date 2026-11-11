@@ -1,0 +1,6 @@
+/* Tailwind for the React parts (src/components). Only its theme and utilities: not its preflight reset, which would restyle the whole site
+   (public/assets/style.css decides the look), and none of shadcn's base styles for the same reason */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../";
