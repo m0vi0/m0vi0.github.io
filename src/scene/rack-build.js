@@ -18,7 +18,9 @@ const CREASE = THREE.MathUtils.degToRad(40);
 // items: the .rack > li elements, top server first. scanOn: label lines start blank and type in later (u.type)
 export async function buildRack(items, scanOn) {
   await Promise.all(['500 64px "Space Grotesk"', '600 64px "Space Grotesk"', '64px "Bebas Neue"'].map(f => document.fonts.load(f)));
-  const gltf = await new GLTFLoader().loadAsync(new URL(`${import.meta.env.BASE_URL}assets/rack.glb`, location.href).href);   // a static file in public/assets
+  const url = new URL(`${import.meta.env.BASE_URL}assets/rack.glb`, location.href).href;   // a static file in public/assets
+  const early = await window.rackGlb;                        // index.html's head started it; a failed one is fetched again here
+  const gltf = early ? await new GLTFLoader().parseAsync(early, url.replace(/[^/]*$/, '')) : await new GLTFLoader().loadAsync(url);
   const rackRoot = new THREE.Group();
   rackRoot.add(gltf.scene);
   rackRoot.updateMatrixWorld(true);

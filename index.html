@@ -19,8 +19,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <!-- static files live in public/assets (bump ?v= on style.css when it changes: browsers cache it); the code in src/ is bundled by Vite -->
 <link rel="stylesheet" href="/assets/style.css?v=17">
-<!-- start the rack's model download with the HTML instead of after rack.js parses -->
-<link rel="preload" href="/assets/rack.glb" as="fetch" crossorigin>
+<!-- start the rack's model download with the HTML instead of after rack.js parses (buildRack takes it; Safari never used a <link rel="preload"> for it) -->
+<script>window.rackGlb = fetch('/assets/rack.glb').then(r => r.ok ? r.arrayBuffer() : null, () => null);</script>
 <script type="module" src="/src/scene/rack.js"></script>
 <script type="module" src="/src/scene/waves.js"></script>
 <script type="module" src="/src/scene/evervault.js"></script>
@@ -134,7 +134,7 @@
         <ul class="chips"><li>Python</li><li>Scapy</li><li>Three.js</li><li>WebSocket</li></ul>
       </div>
       <a class="drop-panel has-media" href="writeups/pacmap.html" tabindex="-1" aria-hidden="true">
-        <video src="/assets/demo.mp4#t=1" muted playsinline preload="metadata"></video>
+        <video src="/assets/demo.mp4#t=1" poster="/assets/demo-poster.jpg" muted playsinline preload="none"></video>   <!-- a still: the poster, not 0.9 MB of video (Safari ignores preload="metadata") -->
         <span class="panel-cta">Read writeup →</span>
       </a>
     </article>
