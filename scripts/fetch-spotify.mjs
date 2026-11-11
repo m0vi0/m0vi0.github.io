@@ -1,4 +1,4 @@
-// Saves my Spotify top 20 (all time) to public/assets/data/top-tracks.json and their covers to public/assets/covers/, read by rack.js,
+// Saves my Spotify top 40 (all time) to public/assets/data/top-tracks.json and their covers to public/assets/covers/, read by rack.js,
 // and with a YouTube key each track's official YouTube upload, which the record shelf plays in full in YouTube's own player.
 // One-time login, prints the refresh token for .env:  node --env-file=.env scripts/fetch-spotify.mjs --auth
 // Update (locally, or weekly on GitHub with the same names as repo secrets):  node --env-file-if-exists=.env scripts/fetch-spotify.mjs
@@ -34,10 +34,10 @@ if (process.argv.includes('--auth')) {
     server.close();
   }).listen(8888, '127.0.0.1', () => console.log(`Open this in your browser and allow access:\n${url}`));
 } else if (!id || !secret || !refresh) {
-  console.log('No Spotify keys set: keeping the placeholder list in assets/data/top-tracks.json.');
+  console.log('No Spotify keys set: keeping the placeholder list in public/assets/data/top-tracks.json.');
 } else {
   const { access_token } = await token({ grant_type: 'refresh_token', refresh_token: refresh });
-  const r = await fetch('https://api.spotify.com/v1/me/top/tracks?time_range=long_term&limit=20', { headers: { Authorization: `Bearer ${access_token}` } });
+  const r = await fetch('https://api.spotify.com/v1/me/top/tracks?time_range=long_term&limit=40', { headers: { Authorization: `Bearer ${access_token}` } });
   if (!r.ok) throw new Error(`top tracks request failed: ${r.status} ${await r.text()}`);
   const tracks = [];
   for (const t of (await r.json()).items) {
@@ -46,10 +46,10 @@ if (process.argv.includes('--auth')) {
     const c = await fetch(img.url);
     if (!c.ok) throw new Error(`cover download failed: ${c.status} ${img.url}`);
     writeFileSync(new URL(`${t.id}.jpg`, COVERS), Buffer.from(await c.arrayBuffer()));
-    tracks.push({ id: t.id, name: t.name, artists: t.artists.map(a => a.name), album: t.album.name, cover: `assets/covers/${t.id}.jpg`, url: t.external_urls.spotify, preview_url: t.preview_url ?? null });
+    tracks.push({ id: t.id, name: t.name, artists: t.artists.map(a => a.name), album: t.album.name, cover: `assets/covers/${t.id}.jpg`, url: t.external_urls.spotify, preview_url: t.preview_url ?? null, yt: before.get(t.id) });   // last run's YouTube match, kept even without a YouTube key
   }
   const keep = new Set(tracks.map(t => `${t.id}.jpg`));
-  for (const f of readdirSync(COVERS)) if (f.endsWith('.jpg') && !keep.has(f)) rmSync(new URL(f, COVERS));   // dropped out of the top 20, or a placeholder
+  for (const f of readdirSync(COVERS)) if (f.endsWith('.jpg') && !keep.has(f)) rmSync(new URL(f, COVERS));   // dropped out of the top 40, or a placeholder
   writeFileSync(OUT, JSON.stringify({ updated: new Date().toISOString().slice(0, 10), tracks }, null, 1) + '\n');
   console.log(`Saved ${tracks.length} tracks: ${tracks.map(t => t.name).join(' · ')}`);
 }

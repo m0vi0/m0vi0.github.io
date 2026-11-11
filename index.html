@@ -4,11 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/assets/theme.js"></script>
-<title>Mervin Sequeira, junior penetration tester</title>
-<meta name="description" content="Mervin Sequeira, 2026 B.E. CSE graduate looking for a junior penetration testing / VAPT role. I run my own detection stack and train on the offensive side.">
+<!-- the 3D layout from the first paint, not after rack.js has loaded the room (rack.js drops these classes if WebGL fails) -->
+<script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('has-3d', 'scan-on', 'room-on');</script>
+<title>Mervin Sequeira: security, web and design</title>
+<meta name="description" content="Mervin Sequeira: security (Wazuh, Kismet, HTB CPTS), web development and UI/UX. 2026 B.E. CSE (AI &amp; ML) graduate.">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Mervin Sequeira, junior penetration tester">
-<meta property="og:description" content="Detection-aware pentester in training: Wazuh, Kismet and failover monitoring at home, HTB CPTS path on the offensive side.">
+<meta property="og:title" content="Mervin Sequeira: security, web and design">
+<meta property="og:description" content="Mervin Sequeira: security (Wazuh, Kismet, HTB CPTS), web development and UI/UX. 2026 B.E. CSE (AI &amp; ML) graduate.">
 <meta property="og:url" content="https://m0vi0.github.io/">
 <meta name="theme-color" content="#FFD400" data-themed data-light="#FFD400">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 fill=%22%23FFD400%22/%3E%3Crect x=%224%22 y=%223%22 width=%228%22 height=%2210%22 fill=%22%230D0D0D%22/%3E%3C/svg%3E">
@@ -47,17 +49,16 @@
       <!-- the room's labels: rack.js places each over its object; the rack and box labels choose it, like a click on it -->
       <button type="button" class="rack-tip room-tip" data-at="rack" hidden>Server rack<small>Security work. Click to power on.</small></button>
       <button type="button" class="rack-tip room-tip" data-at="box" hidden>Art box<small>Web dev &amp; UI/UX. Click to open.</small></button>
-      <button type="button" class="rack-tip room-tip" data-at="vinyl" hidden>Record shelf<small>My Spotify top 20. Click to pick one.</small></button>
+      <button type="button" class="rack-tip room-tip" data-at="vinyl" hidden>Record shelf<small>My Spotify top 40. Click to pick one.</small></button>
       <p class="rack-tip room-tip" data-at="window" hidden>Window<small>Click to switch day and night.</small></p>
       <p class="sr-only" data-at="now" aria-live="polite">Record<small></small></p>
       <!-- the record player's sound when Spotify gives no preview: its own player, for the track rack.js puts on -->
       <div class="spotify-host" aria-hidden="true"><div></div></div>
       <div class="yt-host"><div></div></div>
-      <p class="rack-tip room-tip" data-at="star" hidden>Badminton auction<small>Live multi-auction app with Google sign-in. React, TypeScript, Framer Motion.</small></p>
+      <a class="rack-tip room-tip" data-at="star" href="https://smashbid.duckdns.org" target="_blank" rel="noopener" hidden>SmashBid<small>Badminton auction app with Google sign-in. React, TypeScript, Framer Motion. Click to open.</small></a>
     </div>
 
     <div class="hero-copy">
-      <p class="tagline">Junior penetration tester · VAPT</p>
       <p class="pitch">
         I run my own detection stack (Wazuh, Kismet and failover monitoring) and I'm training
         on the offensive side through the Hack The Box CPTS path. 2026 B.E. CSE (AI &amp; ML)
@@ -67,18 +68,18 @@
         <a class="btn" href="#projects">Projects</a>
         <a class="link" href="#contact">Contact</a>
       </div>
-      <p class="hint">Projects and contact are below.</p>
+      <p class="hint">Scroll to step into the room.</p>
     </div>
 
     <div class="scroll-cue" aria-hidden="true"><span></span></div>
 
     <!-- one item per server in the 3D rack, top to bottom; rack.js draws each one's faceplate label from this list -->
     <ol class="rack" hidden>
-      <li data-label="About" data-title="Junior pentester" data-line="Detection stack at home, offense on the HTB CPTS path." data-tags="B.E. CSE (AI &amp; ML) 2026|Open to work"></li>
+      <li data-label="About" data-title="Mervin Sequeira" data-line="Open to work · B.E. CSE (AI &amp; ML) 2026"></li>
       <li data-label="Tailscale failover" data-title="Tailscale failover" data-line="Remote access and failover without router admin." data-tags="Tailscale|Uptime Kuma|Wazuh|Failover" data-cta="Read writeup →" data-volt="pink"><a href="writeups/tailscale-failover.html">Tailscale failover</a></li>
       <li data-label="Deauth → Wazuh" data-title="Deauth → Wazuh" data-line="Pi WIDS alerts in Wazuh, ~40% fewer false positives." data-tags="Kismet|Wazuh|Syslog|WIDS" data-cta="Read writeup →" data-volt="lime"><a href="writeups/deauth-wazuh.html">Deauth → Wazuh</a></li>
       <li data-label="PacMap" data-title="PacMap" data-line="Graph-first traffic visualizer: live capture, PCAP replay." data-tags="Python|Scapy|Three.js|WebSocket" data-cta="Read writeup →" data-volt="blue"><a href="writeups/pacmap.html">PacMap</a></li>
-      <li data-label="Email" data-title="Hire a junior pentester" data-line="mervinsequeira485@gmail.com" data-cta="Email →"><a href="mailto:mervinsequeira485@gmail.com">Email</a></li>
+      <li data-label="Email" data-title="Get in touch" data-line="mervinsequeira485@gmail.com" data-cta="Email →"><a href="mailto:mervinsequeira485@gmail.com">Email</a></li>
       <li data-label="LinkedIn · GitHub"><a href="https://www.linkedin.com/in/mervin-sequeira-438a033b1/" data-line="in/mervin-sequeira">LinkedIn</a><a href="https://github.com/m0vi0" data-line="github.com/m0vi0">GitHub</a></li>
     </ol>
   </section>

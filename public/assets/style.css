@@ -25,11 +25,17 @@
   --lime: #3F8500; --accent: var(--blue);
   color-scheme: light;
 }
-[data-theme="light"] :is(:focus-visible, .rack-tip.is-focus, button.room-tip:focus-visible) { outline-color: var(--blue); }
+[data-theme="light"] :is(:focus-visible, .rack-tip.is-focus, :is(button, a).room-tip:focus-visible) { outline-color: var(--blue); }
 [data-theme="light"] .article-body h2 { color: var(--volt); }   /* pacmap's pale --volt-text is for the black page */
 /* dark mode's landing page: a near-black field, the name in yellow, cream ink and faint yellow lines (light mode keeps the yellow field) */
 [data-theme="dark"] { --wave-ink: var(--yellow); }
-[data-theme="dark"] .hero { background: radial-gradient(ellipse 120% 95% at 50% 45%, #161616 40%, #060606 100%); color: var(--cream); }
+/* the dark field lies over the yellow one and fades in and out with the room's day and night (3 s, linear, like the window's sky in rack.js) */
+.hero::before { content: ''; position: absolute; z-index: -2; inset: 0; pointer-events: none; opacity: 0; transition: opacity 3s linear;
+  background: radial-gradient(ellipse 120% 95% at 50% 45%, #161616 40%, #060606 100%); }
+[data-theme="dark"] .hero::before { opacity: 1; }
+[data-theme="dark"] .hero { color: var(--cream); }
+/* while the theme switches (theme.js), the page's colours change over the same 3 s */
+.theme-fading :is(body, .hero, .hero *, .nav, .nav *) { transition: color 3s linear, background-color 3s linear, border-color 3s linear !important; }
 [data-theme="dark"].room-on .wordmark { color: var(--yellow); }   /* both on <html> */
 [data-theme="dark"] :is(.nav, .scan-on .nav.is-scrolled) { color: var(--cream); }
 [data-theme="dark"] .hero .btn { --fg: var(--cream); --bg: var(--black); }
@@ -126,8 +132,8 @@ img, video { max-width: 100%; display: block; }
 .spotify-host iframe { width: 100%; height: 100%; border: 0; }
 /* with a mouse the room's labels are the cursor's tooltip (src/components/room-tooltip.tsx); in the scene they show only for keyboard focus */
 .room-tip.quiet:not(:focus-visible) { opacity: 0; pointer-events: none; }
-/* YouTube's player (whole songs), at the smallest size YouTube allows (200 x 200): shown at the stage's corner while a record plays, as its terms ask */
-.yt-host { position: absolute; z-index: 3; left: 1rem; bottom: 1rem; width: 200px; height: 200px; border: 2px solid var(--yellow); background: var(--black); opacity: 0; pointer-events: none; transition: opacity .3s; }
+/* YouTube's player (whole songs), at the smallest size YouTube allows (200 x 200): shown at the stage's bottom-right corner while a record plays, as its terms ask */
+.yt-host { position: absolute; z-index: 3; right: 1rem; bottom: 1rem; width: 200px; height: 200px; border: 2px solid var(--yellow); background: var(--black); opacity: 0; pointer-events: none; transition: opacity .3s; }
 .yt-host.on { opacity: 1; pointer-events: auto; }
 .yt-host iframe { display: block; width: 100%; height: 100%; border: 0; }
 /* phones too: the bottom-left corner, over bare floor (above the turntable, a phone snapped nearby taps onto the player) */
@@ -135,8 +141,8 @@ img, video { max-width: 100%; display: block; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* the shelf's close-up (a zoom, not a scroll): the name and hero text go, as in any close-up */
 .hero.is-zoomed :is(.wordmark, .hero-copy, .scroll-cue) { opacity: 0 !important; visibility: hidden; transition: opacity .3s, visibility 0s .3s; }
-button.room-tip { pointer-events: auto; cursor: pointer; border: 0; }
-button.room-tip:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
+button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; text-decoration: none; }
+:is(button, a).room-tip:focus-visible { outline: 3px solid var(--lime); outline-offset: 3px; }
 .room-on .wordmark { color: var(--black); mix-blend-mode: normal; }   /* the blend needs the black rack behind the name; the room's walls are pale */
 @media (min-width: 52.01rem) {                              /* wide only: phones keep their own size (24vw, below) */
   .room-on .wordmark .last { font-size: clamp(6.5rem, 15vw, 15rem); }
@@ -272,6 +278,12 @@ button.room-tip:focus-visible { outline: 3px solid var(--lime); outline-offset: 
 .portal-on .stage { filter: none; }
 .portal-on .waves { opacity: 0; }
 .portal-on .stage::after { opacity: 0; }
+/* the writeup is the page now (rack.js live()): it takes the clicks and the scroll, the rack hides, the YouTube box (z 3) stays on top */
+.portal-live { overflow: hidden; }
+.portal-live :is(.wordmark, .hero-copy, .scroll-cue, .nav) { visibility: hidden; }
+.portal-live .stage { z-index: 50; }
+.portal-live .stage canvas { visibility: hidden; }
+.portal-live .stage .portal-page { pointer-events: auto; z-index: 2; }
 @view-transition { navigation: auto; }
 
 /* ---- writeups ---- */
@@ -324,6 +336,7 @@ button.room-tip:focus-visible { outline: 3px solid var(--lime); outline-offset: 
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hero::before { transition: none; }
   html { scroll-behavior: auto; }
   .marquee-track, .scroll-cue span { animation: none; }
   .marquee-track { flex-wrap: wrap; width: auto; padding: 0 var(--gutter); }

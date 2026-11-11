@@ -6,7 +6,11 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // measured from assets/rack.glb (scripts/prep-rack.mjs): server fronts at z .299, name panel above the top server
 export const SERVER_FRONT = 0.299;
-const PLATE = { w: 0.56, h: 0.16, y: 0.883, z: 0.3245 };
+// a standard 42U rack: the model's front bezel (a ring round each of its 9 drawer bays) goes, leaving the front open between the posts, and its
+// 1.6 m opening (OPEN, the model's own y, from the plinth to the top cap) becomes 42U; its 20 cm plinth and top cap shrink to 6 cm each.
+// It still stands on the floor (y -1), about 2 m tall. The servers are 4U each, under a 1U patch panel; the rest of the rack stays empty
+const OPEN = [-.795, .795], U = .04445, RACK_U = 42, SERVER_U = 4, END = .06, BOTTOM = -1 + END, TOP = BOTTOM + RACK_U * U;
+const PLATE = { w: 0.56, h: U - .0008, y: TOP - U / 2, z: 0.3245 };   // the patch panel, the top 1U
 const VOLT = { pink: '#FF2D78', lime: '#BFFF00', blue: '#0057FF' };
 const INK = '#F5F0E8', YELLOW = '#FFD400', LIME = '#BFFF00';
 const CREASE = THREE.MathUtils.degToRad(40);
@@ -20,8 +24,26 @@ export async function buildRack(items, scanOn) {
   rackRoot.updateMatrixWorld(true);
   // clean matte charcoal (light enough to show its shape): drop the grimy colour, glow (fake LCD text) and AO/roughness maps, keep the normal map for shape
   const frameMesh = gltf.scene.getObjectByName('frame'), frameMat = frameMesh.material;
-  const fb = indexedBox(frameMesh), FRAME_FRONT = fb.max.z, RAIL = { w: .03, x: fb.max.x - .025 }; // rails sit flush on the front posts
-  frameMesh.geometry = toCreasedNormals(frameMesh.geometry, CREASE); // smooth the 2–3 facet bevels, keep flat faces flat
+  {                                                          // the bezel: every face between the posts' inner sides, inside the opening, but the back panel and the posts themselves
+    const g = frameMesh.geometry, pos = g.attributes.position, idx = g.index.array, keep = [], v = new THREE.Vector3(), E = .0015;
+    for (let t = 0; t < idx.length; t += 3) {
+      let within = true, rim = true, open = true, back = true, sides = 0;
+      for (let k = 0; k < 3; k++) {
+        v.fromBufferAttribute(pos, idx[t + k]);
+        within &&= Math.abs(v.x) < .293 + E; rim &&= Math.abs(v.x) > .293 - E; sides |= v.x > 0 ? 1 : 2;
+        open &&= v.y > OPEN[0] - E && v.y < OPEN[1] + E; back &&= v.z > .293 - E;   // the model's own z: + is the back
+      }
+      if (!within || !open || back || (rim && sides !== 3)) keep.push(idx[t], idx[t + 1], idx[t + 2]);   // rim on one side: a post's inner face
+    }
+    g.setIndex(keep);
+  }
+  frameMesh.geometry = toCreasedNormals(frameMesh.geometry, CREASE); // smooth the 2–3 facet bevels, keep flat faces flat; its own vertices from here (the servers share the model's)
+  {                                                          // 10U: plinth, opening and top cap each squashed to its new height
+    const p = frameMesh.geometry.attributes.position, k = (TOP - BOTTOM) / (OPEN[1] - OPEN[0]), ke = END / (OPEN[0] + 1);
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setY(i, y >= OPEN[1] ? TOP + (y - OPEN[1]) * ke : y > OPEN[0] ? BOTTOM + (y - OPEN[0]) * k : -1 + (y + 1) * ke); }
+    frameMesh.geometry.computeBoundingBox(); frameMesh.geometry.computeBoundingSphere();
+  }
+  const fb = new THREE.Box3().setFromObject(frameMesh), FRAME_FRONT = fb.max.z, RAIL = { w: .03, x: fb.max.x - .025 }; // rails sit flush on the front posts
   Object.assign(frameMat, { map: null, emissiveMap: null, roughnessMap: null, metalnessMap: null, aoMap: null, roughness: .7, metalness: .2 });
   frameMat.color.set('#2a2a2a'); frameMat.emissive.set(0); frameMat.needsUpdate = true;
   const serverMat = frameMat.clone();
@@ -33,15 +55,22 @@ export async function buildRack(items, scanOn) {
   const glow = (g, x, y, r, col, k = 1.5) => { g.save(); g.fillStyle = col; g.shadowColor = col; g.shadowBlur = r * k; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
   const box = (w, h, d, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; };
   const ledGeo = new THREE.CircleGeometry(1, 12);
-  rackRoot.add(patchPanel(), sidePanels());
+  const ke = END / (OPEN[0] + 1), plain = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: .7, metalness: .2 });
+  const cap = box(fb.max.x * 2 - .062, .152 * ke, .001, plain, 0, TOP + .099 * ke, FRAME_FRONT + .0005);   // the top cap's front, plain: it covers the model's maker logo
+  // the rack's floor: the bezel cut took the model's plinth top with it, which left the base hollow, the room's floor showing through
+  const base = box(fb.max.x * 2 - .062, .006, fb.max.z - fb.min.z - .01, plain, 0, BOTTOM - .003, (fb.max.z + fb.min.z) / 2);
+  rackRoot.add(patchPanel(), sidePanels(), cap, base);
 
   // ---- servers: each gets a pivot at its centre so it can slide and turn in place, and a label on its face ----
   const units = items.map((li, i) => {
-    const mesh = gltf.scene.getObjectByName(`server_${i}`);
+    const mesh = gltf.scene.getObjectByName(`server_${i}`), y = TOP - U - (i + .5) * SERVER_U * U;   // 4U each, straight down from the patch panel
     mesh.material = serverMat;
-    const box = indexedBox(mesh);
-    mesh.geometry = toCreasedNormals(mesh.geometry, CREASE);   // after indexedBox: this drops the index
-    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    const b0 = indexedBox(mesh), c0 = b0.getCenter(new THREE.Vector3()).y, k = (SERVER_U * U - .0008) / (b0.max.y - b0.min.y);
+    mesh.geometry = toCreasedNormals(mesh.geometry, CREASE);   // after indexedBox: this drops the index, and gives it its own vertices
+    const p = mesh.geometry.attributes.position;              // the model's 2.5U drawer, made 4U at its place
+    for (let n = 0; n < p.count; n++) p.setY(n, y + (p.getY(n) - c0) * k);
+    mesh.geometry.computeBoundingBox(); mesh.geometry.computeBoundingSphere();
+    const box = new THREE.Box3().setFromObject(mesh), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
     const pivot = new THREE.Group();
     pivot.position.copy(c);
     rackRoot.add(pivot);
@@ -54,16 +83,11 @@ export async function buildRack(items, scanOn) {
     mesh.userData.unit = u;
     return u;
   });
-  // the model's slots past the list: blank servers, the same metal, no label or lights
-  let lastY = units.at(-1).pivot.position.y;                 // the lowest slot's centre, for the rails
-  for (let i = items.length, m; (m = gltf.scene.getObjectByName(`server_${i}`)); i++) {
-    lastY = indexedBox(m).getCenter(new THREE.Vector3()).y; m.material = serverMat; m.geometry = toCreasedNormals(m.geometry, CREASE);
-  }
+  for (let i = items.length, m; (m = gltf.scene.getObjectByName(`server_${i}`)); i++) m.visible = false;   // the rest of the rack stays empty (17U)
 
-  // rails: punched square holes (3 per U) with U numbers on the outer edge, down both front posts
+  // rails: punched square holes (3 per U) with U numbers on the outer edge, down both front posts, the whole 42U
   {
-    const U = (units[0].pivot.position.y - units[1].pivot.position.y) / 2, bottom = lastY - U;
-    const n = Math.floor((fb.max.y - .03 - bottom) / U), rh = n * U;
+    const bottom = BOTTOM, n = RACK_U, rh = n * U;
     for (const s of [-1, 1]) {
       const c = document.createElement('canvas'), W = c.width = 128, H = c.height = Math.round(W * rh / RAIL.w), g = c.getContext('2d');
       const num = s < 0 ? W * .26 : W * .74, hole = s < 0 ? W * .68 : W * .32, pxU = H / n;
@@ -95,27 +119,25 @@ export async function buildRack(items, scanOn) {
     blink.push({ m, u, rate: 1.8 + Math.random() * 7, phase: Math.random() * 6 });
   }
 
-  // 24-port patch panel in the top slot (covers the modelled maker's logo)
+  // 24-port 1U patch panel in the top slot: one row of ports in fours of six, their numbers above
   function patchPanel() {
-    const c = document.createElement('canvas'), W = c.width = 2048, H = c.height = Math.round(W * PLATE.h / PLATE.w), g = c.getContext('2d');
+    const c = document.createElement('canvas'), W = c.width = 3072, H = c.height = Math.round(W * PLATE.h / PLATE.w), g = c.getContext('2d');
     g.fillStyle = '#1b1b1b'; g.fillRect(0, 0, W, H);
     g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
     g.textBaseline = 'middle'; g.textAlign = 'center';
-    const lit = [], pw = 92, ph = 74;
+    const lit = [], pw = 76, ph = H * .42, pitch = 100, x0 = 420, y = H * .6 - ph / 2;
     for (let k = 0; k < 24; k++) {
-      const col = k % 12, row = Math.floor(k / 12);
-      const x = 260 + col * (pw + 34) + Math.floor(col / 6) * 60, y = H * .5 + (row ? 70 : -150);
-      g.fillStyle = '#060606'; g.fillRect(x, y, pw, ph); g.fillRect(x + pw * .3, y + ph, pw * .4, 14);   // RJ45 socket and clip notch
-      g.fillStyle = '#2a2a2a'; for (let p = 0; p < 8; p++) g.fillRect(x + 12 + p * 9.5, y + 8, 5, 16);
-      glow(g, x + 14, y - 22, 7, '#1f2a12', 0);                  // unlit link LED
-      if ((k * 7) % 5) lit.push([x + 14, y - 22]);
-      g.fillStyle = 'rgba(245,240,232,.45)'; g.font = '600 22px "Space Grotesk"'; g.fillText(String(k + 1), x + pw / 2, y + ph + (row ? 40 : 34));
+      const x = x0 + k * pitch + Math.floor(k / 6) * 90;
+      g.fillStyle = '#060606'; g.fillRect(x, y, pw, ph); g.fillRect(x + pw * .3, y + ph, pw * .4, H * .05);   // RJ45 socket and clip notch
+      g.fillStyle = '#2a2a2a'; for (let p = 0; p < 8; p++) g.fillRect(x + 10 + p * 7.5, y + 6, 4, ph * .3);
+      if ((k * 7) % 5) lit.push([x + pw - 8, y - H * .1]); else glow(g, x + pw - 8, y - H * .1, 6, '#1f2a12', 0);   // link LED (unlit)
+      g.fillStyle = 'rgba(245,240,232,.45)'; g.font = `600 ${H * .16}px "Space Grotesk"`; g.fillText(String(k + 1), x + pw * .35, y - H * .1);
     }
     if ('letterSpacing' in g) g.letterSpacing = '5px';
-    g.textAlign = 'left'; g.font = '600 30px "Space Grotesk"'; g.fillStyle = 'rgba(245,240,232,.5)'; g.fillText('PATCH 24', 70, H * .5);
+    g.textAlign = 'left'; g.font = `600 ${H * .24}px "Space Grotesk"`; g.fillStyle = 'rgba(245,240,232,.5)'; g.fillText('PATCH 24', 90, H * .52);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(PLATE.w, PLATE.h), new THREE.MeshBasicMaterial({ map: texOf(c), toneMapped: false }));
     m.position.set(0, PLATE.y, PLATE.z + .001);
-    for (const [x, y] of lit) led(m, (x / W - .5) * PLATE.w, (.5 - y / H) * PLATE.h, .0022);
+    for (const [x, y] of lit) led(m, (x / W - .5) * PLATE.w, (.5 - y / H) * PLATE.h, .0012);
     return m;
   }
 
@@ -250,5 +272,5 @@ export async function buildRack(items, scanOn) {
     return c;
   }
 
-  return { rackRoot, units, frameMesh, blink };
+  return { rackRoot, units, frameMesh, blink, top: fb.max.y };
 }
