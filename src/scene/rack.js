@@ -493,7 +493,7 @@ async function start() {
   }
   // Spotify's own embed, driven from code (its iFrame API) and kept off screen: whole songs for listeners logged in to Spotify in that browser,
   // 30 s previews for everyone else and in Safari (which keeps the embed from seeing the login). Loaded when the shelf close-up opens
-  let spotify = null, spotifyAsked = false, heard = 0, spotAt = 0;   // spotAt: how far through its song Spotify's player is (0..1)
+  let spotify = null, spotifyAsked = false, heard = 0, spotAt = 0, played = '';   // spotAt: how far through its song Spotify's player is (0..1)
   function loadSpotify() {
     if (spotifyAsked) return; spotifyAsked = true;
     window.onSpotifyIframeApiReady = api => api.createController(stage.querySelector('.spotify-host > div'), {   // the inner div: the API replaces it with its iframe, inside the off-screen host
@@ -501,6 +501,9 @@ async function start() {
       spotify = c;
       c.addListener('playback_update', ({ data }) => {
         if (!data.isPaused || data.isBuffering) heard = performance.now();   // playing, or on its way
+        if (!data.isPaused && !data.isBuffering) played = data.playingURI;
+        // phones: Spotify's own bar is the only control, so its pause puts the record back
+        else if (!hoverable && data.isPaused && !data.isBuffering && V.to && played === data.playingURI && data.playingURI === `spotify:track:${room.tracks[V.i]?.id}`) stop();
         const now = room.tracks[V.i];
         if (now && data.playingURI === `spotify:track:${now.id}` && data.duration) spotAt = data.position / data.duration;                       // the song on the turntable ended (not a late word about the one before): the record goes back
         if (now && V.to && data.playingURI === `spotify:track:${now.id}` && data.duration && data.position >= data.duration - 400) stop();
