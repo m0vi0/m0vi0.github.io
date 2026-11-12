@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <!-- static files live in public/assets (bump ?v= on style.css when it changes: browsers cache it); the code in src/ is bundled by Vite -->
-<link rel="stylesheet" href="/assets/style.css?v=17">
+<link rel="stylesheet" href="/assets/style.css?v=18">
 <!-- start the rack's model download with the HTML instead of after rack.js parses (buildRack takes it; Safari never used a <link rel="preload"> for it) -->
 <script>window.rackGlb = fetch('/assets/rack.glb').then(r => r.ok ? r.arrayBuffer() : null, () => null);</script>
 <script type="module" src="/src/scene/rack.js"></script>
@@ -27,6 +27,8 @@
 <script type="module" src="/src/main.tsx"></script>
 </head>
 <body>
+<!-- phones: up from the first paint until the room is drawn (style.css .loader, rack.js loaded) -->
+<div class="loader"><span class="loader-mark">MS</span><span class="loader-term" role="status"><span aria-hidden="true">&gt;</span> <span class="loader-pct">0%</span><span class="loader-cursor" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
 
 <header class="nav">
   <a class="mark" href="#top" aria-label="Mervin Sequeira, top of page">MS</a>

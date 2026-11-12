@@ -372,6 +372,19 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   .waves { filter: none; }
 }
 
+/* phones' loading screen (index.html .loader): from the first paint until rack.js has drawn the room; it gives up on its own after 25 s */
+.loader { display: none; }
+@media not all and (hover: hover) and (pointer: fine) {
+  .has-3d .loader { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+    background: var(--yellow); color: var(--black); transition: opacity .4s, visibility 0s .4s; animation: loaderGiveUp 0s 25s forwards; }
+}
+.loader.done { opacity: 0; visibility: hidden; }
+.loader-mark { display: grid; place-items: center; width: 4.5rem; height: 5.5rem; background: var(--black); color: var(--yellow); font: 2.75rem/1 var(--display); }
+.loader-term { display: inline-flex; align-items: center; gap: .25em; font: 600 1rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.loader-cursor { width: .5em; height: 1em; background: currentColor; animation: loaderBlink 1s step-end infinite; }
+@keyframes loaderBlink { 50% { opacity: 0; } }
+@keyframes loaderGiveUp { to { opacity: 0; visibility: hidden; } }
+
 @media (prefers-reduced-motion: reduce) {
   .hero::before { transition: none; }
   html { scroll-behavior: auto; }
