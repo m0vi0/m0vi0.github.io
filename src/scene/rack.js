@@ -14,6 +14,13 @@ const nav = document.querySelector('.nav');
 const onScroll = () => nav.classList.toggle('is-scrolled', scrollY > 40);
 addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
+// phones' loading screen (index.html .loader): the share of the room's files that are in, gone once the room is drawn
+// shortcut: ROOM_FILES is counted by hand (the rack, the loader libs, 3 JSON + 3 models, 9 textures); recount when the room's files change
+const ROOM_FILES = 17, loader = document.querySelector('.loader'), pct = loader?.querySelector('.loader-pct');
+let filesIn = 0;
+const track = p => { const up = () => { if (pct) pct.textContent = `${Math.min(99, Math.round(++filesIn / ROOM_FILES * 100))}%`; }; p.then(up, up); return p; };
+const loaded = () => { if (!loader) return; if (pct) pct.textContent = '100%'; loader.addEventListener('transitionend', () => loader.remove(), { once: true }); loader.classList.add('done'); };
+
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const hoverable = matchMedia('(hover: hover) and (pointer: fine)').matches;   // a mouse: the room's labels become the cursor's tooltip
 const canvas = document.getElementById('rack3d');
@@ -29,7 +36,7 @@ const JUMP = { '#top': 0, '#projects': FIRST + 1, '#contact': FIRST + 4 };
 // the projects section is hidden in the 3D layout, so its video's poster is fetched only where the page itself shows (no 3D, or 3D gave up)
 const poster = () => { if (!document.documentElement.classList.contains('scan-on')) for (const v of document.querySelectorAll('video[data-poster]')) v.poster = v.dataset.poster; };
 poster();
-if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on', 'room-on'); poster(); });
+if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on', 'room-on'); poster(); loaded(); });
 
 async function start() {
   // antialias only below 2x: on a Retina screen the pixels are fine enough, and 4x MSAA buffers there cost ~160 MB of GPU memory at a laptop's size
@@ -52,6 +59,7 @@ async function start() {
   const scan = document.querySelector('.scan'), hero = scan?.querySelector('.hero');
   const scanOn = !reduce && !!scan;                          // the faceplates draw differently in scan mode
   const files = roomFiles();                                 // the room's downloads start now, alongside the rack's
+  track(window.rackGlb);
   const { rackRoot, units, frameMesh, blink, top: rackTopY } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn);
   const room = await buildRoom(renderer, new THREE.Box3().setFromObject(rackRoot), files);
   // the room and the rack ride one lift: on load it rises from below, turning, and settles past its mark (stepRise).
@@ -902,7 +910,7 @@ async function start() {
   if (scanOn) { readScroll(); sCur = sTarget; updateScan(); }
   if (depthOn) stepDepth(1);
   wake();
-  placeCamera(); render();
+  placeCamera(); render(); loaded();
   if (room) requestAnimationFrame(() => 'requestIdleCallback' in window ? requestIdleCallback(room.loadProps, { timeout: 1500 }) : setTimeout(room.loadProps, 1500));   // the box's props, after the first frame
 }
 
@@ -956,13 +964,13 @@ function paintSky(cv, e, rising) {
 // the room's files: what it needs to rise (main), and the box's contents (later), which join it as they arrive, so the slow brushes hold nothing up
 // the Draco decoder is three's own, copied to public/draco: same origin, so no CDN connection on the room's critical path
 function roomFiles() {
-  const libs = Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'),
-    import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]);
+  const libs = track(Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'),
+    import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]));
   const glb = f => libs.then(([{ GLTFLoader }, { DRACOLoader }]) => (glb.loader ??= new GLTFLoader().setDRACOLoader(new DRACOLoader()
     .setDecoderPath(new URL('../draco/', ASSETS).href))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
-  const json = f => fetch(new URL(f, ASSETS)).then(r => r.json());
+  const json = f => track(fetch(new URL(f, ASSETS)).then(r => r.json()));
   return { libs, main: Promise.all([json('art-layout.json'), json('record-layout.json') /* scripts/settle-records.py */, json('data/top-tracks.json') /* scripts/fetch-spotify.mjs */,
-      ...['clock', 'lamp', 'box'].map(glb)]),   // the clock and lamp hold lights and hands, and the box places the rest
+      ...['clock', 'lamp', 'box'].map(f => track(glb(f)))]),   // the clock and lamp hold lights and hands, and the box places the rest
     later: () => ['cup', 'spraycan', 'tube', 'paintbrush-1', 'paintbrush-2', 'paintbrush-3'].map(glb) };   // called once the room is up, so they don't slow it
 }
 async function buildRoom(renderer, rack, files) {
@@ -975,7 +983,7 @@ async function buildRoom(renderer, rack, files) {
   const tl = new THREE.TextureLoader(), texLoads = [];        // the room rises only once these are in: an untextured floor shows brown under the lamp
   const surface = (k, rx, ry, roughness, n) => {             // a texture set, repeated rx x ry times over each face's UVs
     const [map, normalMap, roughnessMap] = ['diff', 'nor', 'rough'].map(m => {
-      let t; texLoads.push(new Promise(r => { t = tl.load(new URL(`tex/${k}-${m}.jpg`, ASSETS).href, r, undefined, r); }));   // a failed one still lets the room in
+      let t; texLoads.push(track(new Promise(r => { t = tl.load(new URL(`tex/${k}-${m}.jpg`, ASSETS).href, r, undefined, r); })));   // a failed one still lets the room in
       t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; return t;
     });
     map.colorSpace = THREE.SRGBColorSpace;
