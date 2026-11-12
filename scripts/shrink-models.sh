@@ -13,3 +13,5 @@ for f in paintbrush-1:0.01 paintbrush-2:0.01 paintbrush-3:0.01 box:0.001 cup:0.0
 done
 $gt resize "$src/rack.glb" public/assets/rack.glb --width 1024 --height 1024
 rm -rf "$tmp"
+# second pass (2026-11-12, for phones), on the outputs above plus the untouched tube and spray can. The box and cup stay: their hard edges lock the simplifier
+# for f in lamp paintbrush-1 paintbrush-2 paintbrush-3 tube spraycan; do weld, then simplify --ratio 0.15 --error 0.01, then draco, as above; done
