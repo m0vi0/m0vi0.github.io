@@ -128,8 +128,11 @@ img, video { max-width: 100%; display: block; }
 .room-tip[data-at="box"] { translate: -50% 14px; }   /* below the box: above it, it would cover the rack */
 /* the record shelf's Spotify embed, driven from rack.js and never seen: inside the viewport but transparent, behind everything and unclickable
    (off screen or display: none, the browser throttles the frame and it never starts); the now-playing label credits it */
-.spotify-host { position: fixed; left: 0; bottom: 0; z-index: -1; width: 300px; height: 80px; opacity: 0; pointer-events: none; }
-.spotify-host iframe { width: 100%; height: 100%; border: 0; }
+.spotify-host { position: fixed; left: 0; bottom: 0; z-index: -1; width: 300px; height: 80px; opacity: 0; pointer-events: none; border-radius: 12px; overflow: hidden; }   /* clipped to the player's own rounding: no white corners */
+/* desktop: at the shelf the bar shows bottom-left, so ▶ can be pressed (browsers won't start sound from code); phones restyle it below */
+.stage[data-view="shelf"] .spotify-host { position: absolute; left: 1rem; bottom: 1rem; z-index: 6; opacity: 1; pointer-events: auto; }
+.spotify-host iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; }
+.stage[data-inside] canvas { touch-action: none; }   /* phones, the rack or box open: a vertical swipe steps between its stops (rack.js), not the page */
 /* with a mouse the room's labels are the cursor's tooltip (src/components/room-tooltip.tsx); in the scene they show only for keyboard focus */
 .room-tip.quiet:not(:focus-visible) { opacity: 0; pointer-events: none; }
 /* phones too: the bottom-left corner, over bare floor (above the turntable, a phone snapped nearby taps onto the player) */
@@ -328,19 +331,26 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
 /* phones (rack.js sets .stage[data-view]): the shelf's covers in a swipeable row with what's playing, Stop and Back; at the box, Back alone */
 .phone-ui { display: none; }
 @media (hover: none), (pointer: coarse) {
+  /* a hold or drag must never start a text selection or iOS's callout: it eats the tap meant for the room */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  /* the bar spans the full width: only its controls take taps, the rest passes them to the room */
+  .phone-ui { pointer-events: none; }
+  .phone-ui :is(button, .covers, .phone-bar) { pointer-events: auto; }
+  .hero-copy { pointer-events: none; }
+  .hero-copy :is(a, button) { pointer-events: auto; }
   /* iOS plays sound only from a tap inside the Spotify frame itself: at the shelf its bar shows, under the covers */
   .stage[data-view="shelf"] .spotify-host { position: absolute; left: 1rem; right: 1rem; bottom: 1rem; width: auto; z-index: 6; opacity: 1; pointer-events: auto; }
-  .stage[data-view="shelf"] .phone-ui, .stage[data-view="box"] .phone-ui { position: absolute; z-index: 6; left: 0; right: 0; bottom: 1rem; display: grid; gap: .6rem; padding-bottom: env(safe-area-inset-bottom); }
+  .stage[data-view="shelf"] .phone-ui, .stage[data-view="box"] .phone-ui, .stage[data-view="server"] .phone-ui { position: absolute; z-index: 6; left: 0; right: 0; bottom: 1rem; display: grid; gap: .6rem; padding-bottom: env(safe-area-inset-bottom); }
   /* one player: Spotify's own bar beside Back (its ▶/⏸ is the only control), the covers above them */
   .stage[data-view="shelf"] .spotify-host { left: calc(1rem + 80px + .5rem); }
   .stage[data-view="shelf"] :is(.now-line, .phone-stop) { display: none; }
   .stage[data-view="shelf"] .phone-bar { width: fit-content; height: 80px; padding: 18px; box-sizing: border-box; }
-  .stage[data-view="box"] :is(.covers, .now-line, .phone-stop) { display: none; }
+  .stage:is([data-view="box"], [data-view="server"]) :is(.covers, .now-line, .phone-stop) { display: none; }
   .covers { display: flex; gap: .5rem; overflow-x: auto; padding: .4rem 1rem; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .covers button { flex: 0 0 72px; height: 72px; padding: 0; border: 2px solid transparent; background: #222 center / cover; scroll-snap-align: start; cursor: pointer; }
   .covers button.on { border-color: var(--yellow); outline: 2px solid var(--black); }
   .phone-bar { margin: 0 1rem; background: var(--black); color: var(--cream); padding: .6rem .9rem; display: flex; align-items: center; gap: .8rem; font: 700 .78rem/1.3 var(--sans); letter-spacing: .08em; text-transform: uppercase; }
-  .stage[data-view="box"] .phone-bar { width: fit-content; }
+  .stage:is([data-view="box"], [data-view="server"]) .phone-bar { width: fit-content; }
   .now-line { flex: 1; min-width: 0; margin: 0; }
   .now-line[hidden] { display: block; visibility: hidden; }   /* keeps Stop on the right */
   .now-line[hidden] ~ .phone-stop { visibility: hidden; }

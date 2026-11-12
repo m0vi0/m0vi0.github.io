@@ -26,12 +26,15 @@ const STOPS = BOX + 2;                                       // hero, close-up, 
 const ROOM_ZOOM = 1.25;                                     // the room's size on screen on wide screens, at the landing and the close-ups (phones: as wide as fits)
 const FOV = 28, EYE_FOV = 50;                                // the room's close-up widens the lens for its one-point perspective
 const JUMP = { '#top': 0, '#projects': FIRST + 1, '#contact': FIRST + 4 };
-if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on', 'room-on'); });
+// the projects section is hidden in the 3D layout, so its video's poster is fetched only where the page itself shows (no 3D, or 3D gave up)
+const poster = () => { if (!document.documentElement.classList.contains('scan-on')) for (const v of document.querySelectorAll('video[data-poster]')) v.poster = v.dataset.poster; };
+poster();
+if (canvas) start().catch(err => { console.warn('rack: 3D off', err); document.documentElement.classList.remove('has-3d', 'scan-on', 'room-on'); poster(); });
 
 async function start() {
   // antialias only below 2x: on a Retina screen the pixels are fine enough, and 4x MSAA buffers there cost ~160 MB of GPU memory at a laptop's size
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: devicePixelRatio < 2, alpha: true, stencil: true })   // stencil: the sky shows only through the window's glass;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1.5 : 2));   // phones: ~half the pixels to light at 3x
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .9;
 
@@ -92,23 +95,39 @@ async function start() {
   if (scanOn) document.documentElement.classList.add('scan-on');   // index.html's head script already set it, before the first paint
   else document.querySelector('.hint').textContent = 'Projects and contact are below.';
   let sTarget = 0, sCur = 0;
+  // phones: the rack or the box opens in place, like the shelf: the page holds still and a vertical swipe steps between its stops (inside.lo..hi; the box's step is the brush)
+  let inside = null;
+  const brush = { to: 0, k: 0 };                             // the box's close look at the SmashBid brush, eased like zoom.k
   const span = () => scan.offsetHeight - hero.offsetHeight;
-  function readScroll() { sTarget = span() > 0 ? Math.min(Math.max(-scan.getBoundingClientRect().top / span(), 0), 1) * (STOPS - 1) : 0; }
+  function readScroll() { if (inside) return; sTarget = span() > 0 ? Math.min(Math.max(-scan.getBoundingClientRect().top / span(), 0), 1) * (STOPS - 1) : 0; }
   const stopTop = n => scan.getBoundingClientRect().top + scrollY + n * span() / (STOPS - 1);
   const goStop = n => scrollTo({ top: stopTop(n) });
   // a click on the rack, the box or the background: the page moves to that stop at once, and the camera flies straight from where it is to
   // there (placeCamera), past nothing in between, while the labels are already at the stop
-  function flyTo(n) {
+  function takeOff() {
     const css = ['--p', '--dof'].map(k => parseFloat(hero.style.getPropertyValue(k)) || 0);   // the page's fade where it was: it follows the flight too (updateScan)
     fly = { pos: camera.position.clone(), look: look.clone(), fov: camera.fov, shift: [...shiftNow], t0: performance.now(), css, e: 0 };
-    scrollTo({ top: stopTop(n), behavior: 'instant' }); readScroll(); sCur = sTarget; updateScan(); wake();
+  }
+  function flyTo(n) { takeOff(); scrollTo({ top: stopTop(n), behavior: 'instant' }); readScroll(); sCur = sTarget; updateScan(); wake(); }
+  function openIn(n, range) {                               // phones: fly to stop n without moving the page, and hold it there
+    takeOff(); inside = range; stage.dataset.inside = ''; document.documentElement.style.overflow = 'hidden';
+    sTarget = sCur = n; updateScan(); wake();
+  }
+  function closeIn() {                                      // back to where the page is (the room's close-up)
+    takeOff(); inside = null; brush.to = brush.k = 0; delete stage.dataset.inside; document.documentElement.style.overflow = '';
+    readScroll(); sCur = sTarget; updateScan(); wake();
+  }
+  function step(d) {                                        // a swipe while open: the next (1) or previous (-1) stop
+    if (inside.box) { if (room.star && !starPose) buildPoses(); brush.to = d > 0 && room.star ? 1 : 0; }   // the brush arrives late (loadProps)
+    else sTarget = Math.min(Math.max(Math.round(sTarget) + d, inside.lo), inside.hi);
+    wake();
   }
   // the room's track: hero, close-up (click the rack or the box), the servers, the box, the whole room
   if (scanOn) document.querySelector('.stops').replaceChildren(...Array.from({ length: STOPS }, () => Object.assign(document.createElement('span'), { className: 'stop' })));
 
   // ---- layout / camera ----
   const stage = canvas.parentElement;
-  let W = 1, H = 1, aspect = 1, poses = [], zoomPose = null;   // the record shelf, close (see zoom)
+  let W = 1, H = 1, aspect = 1, poses = [], zoomPose = null, starPose = null;   // the record shelf, close (see zoom)
   function frame() {
     W = stage.clientWidth; H = stage.clientHeight;
     renderer.setSize(W, H, false);
@@ -157,6 +176,8 @@ async function start() {
       return { pos: new THREE.Vector3(x, y, b.max.z + d), look: new THREE.Vector3(x, y, b.min.z), fov: EYE_FOV, shift: [0, ((b.min.y + b.max.y) / 2 - y) / (d * tv) / 2] };
     };
     zoomPose = view(room.vinyl.box, [0, .5, 1], .95, .9);
+    // shortcut: only the SmashBid brush has a stop, add a tool here when it gets a project
+    if (room.star) starPose = view(new THREE.Box3().setFromObject(room.star), [0, 3, .6], .5, .5);
     const Z = aspect < 1 ? 1 : ROOM_ZOOM;                 // phones: the room already spans the screen
     poses = [heroPose, eye(.86 * Z, .8 * Z), ...servers,   // close-up: both labels show
       view(room.box, [0, 3, .6], aspect < 1 ? .95 : 1.32, 1.3),   // the showcase: close, almost straight down into the box (phones: back a bit, so the brush fits)
@@ -183,6 +204,9 @@ async function start() {
     if (zoom.k) {                                           // the whole shelf: its four cubes of records and the turntable
       const e = zoom.k * zoom.k * (3 - 2 * zoom.k);
       camera.position.lerp(zoomPose.pos, e); look.lerp(zoomPose.look, e); fov += (FOV - fov) * e; sx -= sx * e; sy -= sy * e; }
+    if (brush.k && starPose) {                              // phones, the box open: close on the SmashBid brush
+      const e = brush.k * brush.k * (3 - 2 * brush.k);
+      camera.position.lerp(starPose.pos, e); look.lerp(starPose.look, e); sx -= sx * e; sy -= sy * e; }
     if (fov !== camera.fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
     if (orb.y || orb.p) orbit();
     camera.lookAt(look);
@@ -316,10 +340,16 @@ async function start() {
     hoverAt = at; const el = at && tips[at];
     dispatchEvent(new CustomEvent('room-hover', { detail: tip ?? (el ? { title: el.firstChild.textContent.trim(), sub: el.querySelector('small')?.textContent ?? '' } : null) }));
   }
-  function which(ev) {                                     // 'rack', 'box', 'vinyl', 'window' or null under the pointer, whichever is nearer
-    const { hit } = pick(ev), vin = ray.intersectObject(room.vinyl.grp, true)[0], win = ray.intersectObject(room.win, true)[0];
-    const inBox = ray.ray.intersectBox(room.box, boxHit), art = inBox && { distance: inBox.distanceTo(ray.ray.origin) };   // its bounds: the open box's walls are one-sided, so its inside would miss
-    return [[hit, 'rack'], [art, 'box'], [vin, 'vinyl'], [win, 'window']].filter(h => h[0]).sort((a, b) => a[0].distance - b[0].distance)[0]?.[1] ?? null;
+  const tb = new THREE.Box3(), tc = new THREE.Vector3();
+  function scr(box, ev) {                                  // pixels from the pointer to a box's centre as the camera sees it
+    const r = canvas.getBoundingClientRect(); box.getCenter(tc).project(camera);
+    return Math.hypot((tc.x + 1) / 2 * r.width + r.left - ev.clientX, (1 - tc.y) / 2 * r.height + r.top - ev.clientY);
+  }
+  function which(ev) {                                     // 'rack', 'box', 'vinyl', 'window' or null under the pointer: the nearest of their own meshes it touches, as on the shelf (what you see is what you tap)
+    pick(ev); let best = null, bd = Infinity;
+    for (const [k, o] of [['rack', rackMeshes], ['box', [room.art]], ['window', [room.win]]]) { const d = ray.intersectObjects(o, true)[0]?.distance ?? Infinity; if (d < bd) { bd = d; best = k; } }
+    const v = shelfHit(ev); if (v.any && v.d < bd) best = 'vinyl';
+    return best;
   }
   canvas.addEventListener('pointermove', ev => {
     if (portal) return;
@@ -340,30 +370,40 @@ async function start() {
     }
     const p = pick(ev); setHot(p.u, p.x, p.y); if (hovers(ev)) pickServer(p.u); if (!p.u && p.rack && scanOn) canvas.style.cursor = 'zoom-in';
   });
-  // the drag: a mouse held down, or two fingers (one finger scrolls the page). Past 5 px it is a drag, and the click it ends in is dropped
+  // the drag: a mouse held down, one finger moving sideways (up/down still scrolls the page), or two fingers (which also tilt). Past 5 px (mouse) or 10 px (touch) it is a drag, and the tap/click it ends in is dropped
+  // a tap is the browser's own click (it knows a tap from a scroll); only a drag that turned the view drops the click it ends in
   let drag = null, dragged = false;
   const touches = new Map(), mid = () => { let x = 0, y = 0; for (const t of touches.values()) { x += t.x / touches.size; y += t.y / touches.size; } return { x, y }; };
   if (room) {
     canvas.addEventListener('pointerdown', ev => {
       if (portal || rise) return;
-      if (ev.pointerType === 'touch') { touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (touches.size === 2) drag = { ...mid(), on: true }; return; }
+      dragged = false;                                      // a swipe that ended without a click must not eat the next tap
+      if (ev.pointerType === 'touch') { if (ev.isPrimary) touches.clear(); touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); drag = touches.size === 2 ? { ...mid(), on: true } : touches.size === 1 ? { x: ev.clientX, y: ev.clientY, on: false, one: true } : null; return; }
       if (ev.button === 0) { drag = { x: ev.clientX, y: ev.clientY, on: false }; canvas.setPointerCapture(ev.pointerId); }
     });
     canvas.addEventListener('pointermove', ev => {
-      if (ev.pointerType === 'touch') { if (!touches.has(ev.pointerId)) return; touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (touches.size < 2 || !drag) return; }
+      if (ev.pointerType === 'touch') { if (!touches.has(ev.pointerId)) return; touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); if (!drag) return; }
       if (!drag) return;
       const at = ev.pointerType === 'touch' ? mid() : { x: ev.clientX, y: ev.clientY }, dx = at.x - drag.x, dy = at.y - drag.y;
-      if (!drag.on && Math.hypot(dx, dy) < 5) return;
+      if (!drag.on && Math.hypot(dx, dy) < (drag.one ? 10 : 5)) return;
+      if (drag.one && !drag.on && Math.abs(dx) <= Math.abs(dy)) return;   // a mostly vertical swipe belongs to the page scroll, and is no tap
       drag.on = true; drag.x = at.x; drag.y = at.y; canvas.style.cursor = 'grabbing';
-      orb.y = Math.min(Math.max(orb.y - dx * .005, -Math.PI / 3), Math.PI / 3); orb.p = Math.min(Math.max(orb.p + dy * .005, -1.4), 1.4);
+      orb.y = Math.min(Math.max(orb.y - dx * .005, -Math.PI / 3), Math.PI / 3); if (!drag.one) orb.p = Math.min(Math.max(orb.p + dy * .005, -1.4), 1.4);
       orb.back = false; wake();
     });
     const release = ev => {
-      if (ev.pointerType === 'touch') { touches.delete(ev.pointerId); if (touches.size < 2) drag = null; return; }
+      if (ev.pointerType === 'touch') {
+        if (inside && drag?.one && !drag.on) {           // open on a phone: a vertical swipe steps between the stops
+          const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+          if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx)) { step(dy < 0 ? 1 : -1); dragged = true; }
+        }
+        if (drag?.on) dragged = true;   // a first finger lands with a fresh map (pointerdown), so a lost pointerup cannot leave a finger stuck
+        touches.delete(ev.pointerId); if (touches.size < 2) drag = null; return;
+      }
       if (drag?.on) { dragged = true; canvas.style.cursor = 'grab'; }
       drag = null;
     };
-    canvas.addEventListener('pointerup', release); canvas.addEventListener('pointercancel', release);
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(t, release);
     canvas.addEventListener('click', ev => { if (dragged) { dragged = false; ev.stopImmediatePropagation(); } }, true);
   }
   canvas.addEventListener('pointerleave', ev => { setHot(null); starHot = winHot = false; toolHot = recHot = null; hoverLabel(null); for (const F of flips) F.on = false; if (hovers(ev)) pickServer(null); });
@@ -372,6 +412,8 @@ async function start() {
   function leave() {
     if (showing) showing = null;
     else if (zoom.at) zoom.at = null;
+    else if (brush.to) brush.to = 0;
+    else if (inside) closeIn();
     else { pickServer(null); flyTo(homeStop); }
     wake();
   }
@@ -379,9 +421,9 @@ async function start() {
     sfx('click');
     if (w !== 'window' && w !== 'vinyl') homeStop = sCur > STOPS - 1.5 ? STOPS - 1 : FIRST - 1;
     if (w === 'window') return void document.querySelector('[data-theme-toggle]')?.click();   // the window: the site's theme toggle, day or night for the room and the page
-    if (w === 'rack') { const was = powered; toRack(); setTimeout(() => flyTo(FIRST), was || reduce ? 0 : 700 * SLOW); }
-    else if (w === 'vinyl') { zoom.at = 'vinyl'; loadSpotify(); }
-    else flyTo(BOX);
+    if (w === 'rack') { const was = powered; toRack(); if (!hoverable) openIn(FIRST, { lo: FIRST, hi: BOX - 1 }); else setTimeout(() => flyTo(FIRST), was || reduce ? 0 : 700 * SLOW); }   // phones: no waiting for the power-on
+    else if (w === 'vinyl') { zoom.at = 'vinyl'; loadSpotify(); room.vinyl.loadCovers(wake); }
+    else { room.loadProps(); if (!hoverable) openIn(BOX, { lo: BOX, hi: BOX, box: true }); else flyTo(BOX); }
     wake();
   }
   const SLIDE = .035;
@@ -429,7 +471,8 @@ async function start() {
       o.connect(env(ac, t + .45, .25, .005, .15)); o.start(t + .45); o.stop(t + .65);
     }
   }
-  canvas.addEventListener('click', ev => {
+  canvas.addEventListener('click', tap);
+  function tap(ev) {
     if (portal) return;
     if (zoom.at) {                                          // the shelf: a click shows the record under it, a click on the shown cover plays it,
       const touch = ev.pointerType !== 'mouse', k = cubeAt(ev);   // the turntable stops it, a click anywhere else puts the shown one back (or steps out)
@@ -445,11 +488,15 @@ async function start() {
     }
     if (choosing()) { const w = which(ev); if (w) choose(w); else if (sCur > .5 && !ray.intersectObject(room.root, true)[0]) flyTo(0); return; }   // the page behind the room: back to the landing
     if (Math.abs(sCur - BOX) < .5) {                       // the showcase: the Badminton brush opens SmashBid (its label is the link); the background steps back
-      if (room.star && ray.intersectObject(room.star, true)[0]) tips.star.click(); else if (!ray.intersectObject(room.art, true)[0]) leave();
+      pick(ev); const h = ray.intersectObjects(room.tools, true)[0]?.object;   // a tool: under the tap, or else the nearest within 24 px of it
+      let t = h && room.tools.find(o => o === h || o.getObjectById(h.id)), d = 24;
+      if (!t) for (const o of room.tools) { const e = scr(tb.setFromObject(o), ev); if (e < d) { d = e; t = o; } }
+      if (t) { toolHot = t; wake(); if (!hoverable) setTimeout(() => { if (toolHot === t) { toolHot = null; wake(); } }, 1000); if (t === room.star) tips.star.click(); }   // it hops (the hover lift, ~1 s on touch)
+      else if (!ray.intersectObject(room.art, true)[0]) leave();   // as on the shelf: anything that isn't the box steps back
       return;
     }
     const { u, rack, hit, x, y } = pick(ev);
-    if (!u) { pickServer(null); if (rack && scanOn) goStop(rack.i + 1); else if (inRoomZoom()) leave(); return; }   // the cabinet: close up on the nearest unit; empty space: slide back in
+    if (!u) { pickServer(null); if (inside) { if (!hit) leave(); return; } if (rack && scanOn) goStop(rack.i + 1); else if (inRoomZoom()) leave(); return; }   // the cabinet: close up on the nearest unit; empty space: slide back in
     ripple(x, y);
     if (u !== picked) { sfx('click'); return pickServer(u); }
     if (!u.link) return;                                   // the About server is a label only
@@ -457,7 +504,7 @@ async function start() {
     if (u.project && !reduce) return enter(u);
     // the bottom server holds two links: left half, right half
     (u.links.length > 1 && u.pivot.worldToLocal(hit.point.clone()).x >= u.split ? u.links[1] : u.link).click();
-  });
+  }
 
   // ---- the record player: one timeline, V.p seconds into putting a record on (0 in its sleeve, PLAYING spinning with the arm down).
   // The disc slides out of its sleeve's open side (out), rises in front of the shelf (rise), crosses over and lands flat on the platter (land);
@@ -493,14 +540,14 @@ async function start() {
   }
   // Spotify's own embed, driven from code (its iFrame API) and kept off screen: whole songs for listeners logged in to Spotify in that browser,
   // 30 s previews for everyone else and in Safari (which keeps the embed from seeing the login). Loaded when the shelf close-up opens
-  let spotify = null, spotifyAsked = false, heard = 0, spotAt = 0, played = '';   // spotAt: how far through its song Spotify's player is (0..1)
+  let spotify = null, spotifyAsked = false, sounding = false, spotAt = 0, played = '';   // spotAt: how far through its song Spotify's player is (0..1)
   function loadSpotify() {
     if (spotifyAsked) return; spotifyAsked = true;
     window.onSpotifyIframeApiReady = api => api.createController(stage.querySelector('.spotify-host > div'), {   // the inner div: the API replaces it with its iframe, inside the off-screen host
        uri: `spotify:track:${room.tracks[0].id}`, width: 300, height: 80 }, c => {
       spotify = c;
       c.addListener('playback_update', ({ data }) => {
-        if (!data.isPaused || data.isBuffering) heard = performance.now();   // playing, or on its way
+        sounding = !data.isPaused && !data.isBuffering && data.playingURI === `spotify:track:${room.tracks[V.i]?.id}`; wake();   // the record spins only while Spotify is actually playing it
         if (!data.isPaused && !data.isBuffering) played = data.playingURI;
         // phones: Spotify's own bar is the only control, so its pause puts the record back
         else if (!hoverable && data.isPaused && !data.isBuffering && V.to && played === data.playingURI && data.playingURI === `spotify:track:${room.tracks[V.i]?.id}`) stop();
@@ -514,8 +561,8 @@ async function start() {
   addEventListener('keydown', e => { if (e.key === 'Escape' && (zoom.at || inRoomZoom())) leave(); });
   function shelfHit(ev) {
     pick(ev);
-    const h = ray.intersectObject(room.vinyl.grp, true)[0]?.object;
-    return { sleeve: room.vinyl.sleeves.includes(h) ? h : null, player: !!h && (h.parent === room.vinyl.player || h.parent?.parent === room.vinyl.player || h.parent === room.vinyl.disc), any: !!h };
+    const i = ray.intersectObject(room.vinyl.grp, true).find(i => { for (let o = i.object; o; o = o.parent) if (o === room.vinyl.lamp) return false; return true; }), h = i?.object;   // the desk lamp is no part of the shelf: tapping it leaves
+    return { sleeve: room.vinyl.sleeves.includes(h) ? h : null, player: !!h && (h.parent === room.vinyl.player || h.parent?.parent === room.vinyl.player || h.parent === room.vinyl.disc), any: !!h, d: i?.distance ?? Infinity };
   }
   function play(i) {                                        // from a click: the song starts in it, since browsers let sound start only inside one
     if (V.i === i && V.to) return;
@@ -523,8 +570,9 @@ async function start() {
     sing(room.tracks[i]); wake();
   }
   function stop() { V.next = -1; V.to = 0; silence(); wake(); }
-  function silence() { spotify?.pause(); tips.now.hidden = true; }
+  function silence() { sounding = false; spotify?.pause(); tips.now.hidden = true; }
   function sing(t) {
+    sounding = false;
     tips.now.firstChild.data = `${t.name}, `; tips.now.querySelector('small').textContent = t.artists.join(', '); tips.now.hidden = false;
     // started (silently) inside your click, which is what lets it play with sound later: the song itself waits for the needle (drop())
     if (spotify && t.id) spotify.loadUri(`spotify:track:${t.id}`);
@@ -532,10 +580,7 @@ async function start() {
   const songAt = () => room.tracks[V.i] ? spotAt : 0;   // how far through the song on the turntable (0..1)
   function drop(t) {                                        // the needle is down: the song, from its start
     if (!spotify || !t.id) return;
-    spotAt = 0; spotify.play();
-    const asked = performance.now();
-    // phones (iOS Safari) refuse play() from the page: the visitor taps the visible Spotify bar's ▶ (style.css), so the record keeps spinning meanwhile
-    if (hoverable) setTimeout(() => { if (heard < asked && V.i >= 0 && room.tracks[V.i] === t && V.to) stop(); }, 5000);   // the browser refused to play it: nothing left spinning in silence
+    spotAt = 0; spotify.play();   // Safari refuses this outside a tap: the visitor presses ▶ on the visible Spotify bar (style.css) and the record starts spinning then
   }
   function stepVinyl(dt) {                                  // true while something on the shelf moves
     const v = room.vinyl, ps = v.sleeves[V.i]?.userData, was = V.p;
@@ -549,7 +594,7 @@ async function start() {
     }
     if (was < PLAYING && V.p >= PLAYING) drop(room.tracks[V.i]);   // the arm has landed
     if (V.p === 0 && !V.to && V.i >= 0) { V.i = V.next; V.next = -1; if (V.i >= 0) V.to = PLAYING; }
-    const speed = reduce ? 0 : RPM * ease(phase(V.p, ...VT.spin));
+    const speed = reduce || !sounding ? 0 : RPM * ease(phase(V.p, ...VT.spin));
     V.spin += speed * dt;
     let moving = V.p !== V.to || speed > 0;
     // the disc's sleeve is out while the disc is off the platter, or on its way back; the one waiting its turn too. Otherwise in the shelf
@@ -620,9 +665,10 @@ async function start() {
   // the real writeup waits full-screen in an <iframe> behind the canvas; the lid is a window cut into the canvas, so the last frame is the page itself
   // (a screenshot stands in on the lid until the iframe loads)
   const shotOf = u => new URL(`portal-${u.link.pathname.split('/').pop().replace('.html', '')}.webp`, ASSETS).href;
-  const shots = new Map(units.filter(u => u.project).map(u => [u, Object.assign(new Image(), { src: shotOf(u) })]));
+  const shots = new Map();                                  // project unit -> its screenshot, fetched when its page first opens (page)
   function page(u) {                                        // preload when its server is in view or hovered
     if (!u?.project || reduce) return null;
+    if (!shots.has(u)) shots.set(u, Object.assign(new Image(), { src: shotOf(u) }));
     let f = pages.get(u);
     if (!f) {
       for (const [v, g] of pages) if (v !== portal?.u) { g.remove(); pages.delete(v); }   // one at a time: each is a whole page, images and all, in memory
@@ -638,7 +684,7 @@ async function start() {
     const cv = document.createElement('canvas'), g = cv.getContext('2d'), img = shots.get(u);
     cv.width = 2048; cv.height = Math.round(2048 / aspect);
     g.fillStyle = '#0D0D0D'; g.fillRect(0, 0, cv.width, cv.height);
-    if (img.complete && img.naturalWidth) { const k = cv.width / img.naturalWidth; g.drawImage(img, 0, 0, cv.width, img.naturalHeight * k); }
+    if (img?.complete && img.naturalWidth) { const k = cv.width / img.naturalWidth; g.drawImage(img, 0, 0, cv.width, img.naturalHeight * k); }
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
     const grp = new THREE.Group();
     const shot = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
@@ -733,12 +779,12 @@ async function start() {
   let running = false, visible = true, last = performance.now(), boot = 0;
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(stage);
   document.addEventListener('visibilitychange', wake);
-  function wake() { if (!running && visible && !document.hidden) { running = true; last = performance.now(); renderer.setAnimationLoop(tick); } }
+  let shMoved = true;
+  function wake() { if (!running && visible && !document.hidden) { running = true; shMoved = true; last = performance.now(); renderer.setAnimationLoop(tick); } }
   if (room) room.arrived = wake;                             // a late prop: one more frame, with its shadow
   function tick(now) {
     const dt = Math.min(Math.max((now - last) / 1000, 0), .05) / SLOW; last = now;   // rAF time can trail performance.now()
-    renderer.shadowMap.needsUpdate = true;
-    let moving = false;
+    let moving = false, lit = false;
     const k = reduce ? 1 : 1 - Math.exp(-dt * 10);
     if (portal) { stepPortal(now); moving = !portal.gone; }   // once the writeup is the page, the room behind it stops drawing
     else {
@@ -765,10 +811,12 @@ async function start() {
         hero.classList.toggle('is-zoomed', !!zoom.at);     // the shelf close-up: the name and hero text go, as in any close-up
         zoom.k = reduce ? zk : Math.min(Math.max(zoom.k + Math.sign(zk - zoom.k) * dt / .8, 0), 1);
         if (zoom.k !== zk) moving = true;
+        brush.k = reduce ? brush.to : Math.min(Math.max(brush.k + Math.sign(brush.to - brush.k) * dt / .8, 0), 1);
+        if (brush.k !== brush.to) moving = true;
         if (stepVinyl(dt)) moving = true;
         const n = room.night;                               // the light: 3 s between day and night, a sunset or a sunrise
         if (n.at !== n.to) { n.at = reduce ? n.to : Math.min(Math.max(n.at + Math.sign(n.to - n.at) * dt / 3, 0), 1); n.set(n.at, n.to); moving = true; }
-        if (!reduce && closeUp()) { if (n.at > 0) n.lights(now / 1000); moving = true; }   // the racing clock (and at night the shelf's lights) run smoothly while the room is in view
+        if (!reduce && closeUp()) { if (n.at > 0) n.lights(now / 1000); lit = true; }   // the racing clock (and at night the shelf's lights) run smoothly while the room is in view, without redrawing the sun's shadow
         if (orb.back) { orb.y -= orb.y * k; orb.p -= orb.p * k; if (Math.abs(orb.y) + Math.abs(orb.p) < 1e-4) { orb.y = orb.p = 0; orb.back = false; } else moving = true; }
         // the tools hop one after another (90 ms apart, 3 cm, 350 ms each); the Badminton brush stands 4 cm up at its stop; the tool under the
         // pointer lifts 2 cm more along its own lean and brightens a little, like a server under it
@@ -787,8 +835,10 @@ async function start() {
     }
     if (focus?.typed < focus?.chars) { const n = Math.min((performance.now() - focus.t0) / 25 | 0, focus.chars); if (n > focus.typed) focus.type(n); moving = true; }   // 25ms a char
     if (boot) moving = true;
+    if (moving || shMoved) renderer.shadowMap.needsUpdate = true;   // the sun's shadow only redraws when something moved (this frame or the one before, for its last step)
+    shMoved = moving;
     render();
-    if (!moving || !visible || document.hidden) { running = false; renderer.setAnimationLoop(null); }
+    if (!(moving || lit) || !visible || document.hidden) { running = false; renderer.setAnimationLoop(null); }
   }
   const bootStep = () => boot ? (performance.now() - boot) / 130 / SLOW : powered ? 99 : -1;   // power-on: one server every 130ms, top to bottom (-1: dark until it is chosen)
   // the lift's ride in: straight up from below (6 m at the old 2.6 m room, scaled with it), fast and then settling (ease-out quart) over 1.8 s
@@ -825,9 +875,9 @@ async function start() {
       }
       label(tips.star, starOn && !!room.star, starTop);
       label(tips.window, winHot && choosing() && !rise && !portal, room.winTop);   // last, so it moves below a label it would cover
+      const view = zoom.at === 'vinyl' && !portal ? 'shelf' : starOn && !starHot ? 'box' : !portal && !zoom.at && Math.abs(sCur - Math.round(sCur)) < .2 && Math.round(sCur) >= FIRST && Math.round(sCur) < BOX ? 'server' : '';   // (the Spotify bar shows at the shelf on desktop too)
+      if (stage.dataset.view !== view) stage.dataset.view = view;
       if (!hoverable) {                                     // phones: the cover strip at the shelf, Back at the box; the playing cover outlined
-        const view = zoom.at === 'vinyl' && !portal ? 'shelf' : starOn && !starHot ? 'box' : '';
-        if (stage.dataset.view !== view) stage.dataset.view = view;
         const ui = document.querySelector('.phone-ui .covers');
         for (const [i, b] of [...ui.children].entries()) b.classList.toggle('on', i === (V.to ? V.i : V.next));
       }
@@ -840,19 +890,20 @@ async function start() {
     tipAt.copy(p).project(camera);
     const half = el.offsetWidth / 2 + 8, tall = el.offsetHeight + 22;   // 14 px off its point (style.css) + 8
     el.style.left = `${Math.min(Math.max((tipAt.x + 1) / 2 * W, half), W - half)}px`; el.style.top = `${Math.min(Math.max((1 - tipAt.y) / 2 * H, tall), H - tall)}px`;
-    for (const r of placed) {                               // narrow screens: a label that would cover one placed before it goes below that one
+    for (const r of placed) {                               // narrow screens: a label that would cover one placed before it is left out
       const b = el.getBoundingClientRect();
-      if (b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) el.style.top = `${parseFloat(el.style.top) + r.bottom - b.top + 6}px`;
+      if (b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) { el.hidden = true; return; }   // moving it down would cover another target, so the later label gives way
     }
     placed.push(el.getBoundingClientRect());
   }
   const placed = [];
-  // shortcut: LEDs blink by re-rendering ~7x/s while the rack is on screen; drop the interval if battery use matters
-  setInterval(() => { if (!running && visible && !document.hidden && !portal) render(); }, 150);   // the room's clock ticks even with reduced motion: telling time is its job
+  // shortcut: idle redraw is 1x/s (clock hands, LED blink steps); the LEDs blink smoothly only while the loop runs
+  setInterval(() => { if (!running && visible && !document.hidden && !portal) render(); }, 1000);   // the room's clock ticks (once a second) even with reduced motion: telling time is its job
   if (scanOn) { readScroll(); sCur = sTarget; updateScan(); }
   if (depthOn) stepDepth(1);
   wake();
   placeCamera(); render();
+  if (room) requestAnimationFrame(() => 'requestIdleCallback' in window ? requestIdleCallback(room.loadProps, { timeout: 1500 }) : setTimeout(room.loadProps, 1500));   // the box's props, after the first frame
 }
 
 // the room around the rack, in metres (the rack is 2 m tall, centred on the origin, front to +z).
@@ -903,11 +954,12 @@ function paintSky(cv, e, rising) {
   cx.globalAlpha = 1;
 }
 // the room's files: what it needs to rise (main), and the box's contents (later), which join it as they arrive, so the slow brushes hold nothing up
+// the Draco decoder is three's own, copied to public/draco: same origin, so no CDN connection on the room's critical path
 function roomFiles() {
   const libs = Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'),
     import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]);
   const glb = f => libs.then(([{ GLTFLoader }, { DRACOLoader }]) => (glb.loader ??= new GLTFLoader().setDRACOLoader(new DRACOLoader()
-    .setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/libs/draco/gltf/'))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
+    .setDecoderPath(new URL('../draco/', ASSETS).href))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
   const json = f => fetch(new URL(f, ASSETS)).then(r => r.json());
   return { libs, main: Promise.all([json('art-layout.json'), json('record-layout.json') /* scripts/settle-records.py */, json('data/top-tracks.json') /* scripts/fetch-spotify.mjs */,
       ...['clock', 'lamp', 'box'].map(glb)]),   // the clock and lamp hold lights and hands, and the box places the rest
@@ -1066,7 +1118,7 @@ async function buildRoom(renderer, rack, files) {
   vinyl.top.add(wire, bulbs, ...glows);
   // Poly Haven's Desk Lamp Arm 01 (CC0): an architect's lamp clamped to the shelf top's left edge, its arm turned over the shelf. At night its bulb
   // glows and a warm spot from the bulb lights the deck, with its own bounce off the shelf top
-  deskLamp.rotation.y = -Math.PI / 2; deskLamp.position.set(-.4, .8, -.02); vinyl.grp.add(deskLamp);   // beside the shelf top's group, so the shelf close-up frames the shelf, not the lamp
+  deskLamp.rotation.y = -Math.PI / 2; deskLamp.position.set(-.4, .8, -.02); vinyl.grp.add(deskLamp); vinyl.lamp = deskLamp;   // beside the shelf top's group, so the shelf close-up frames the shelf, not the lamp
   let bulbM = null; deskLamp.traverse(o => { if (o.isMesh) for (const m of [].concat(o.material)) if (m.name.endsWith('_light')) bulbM = m; });
   vinyl.top.updateMatrixWorld(true);
   vinyl.grp.updateMatrixWorld(true);
@@ -1130,13 +1182,15 @@ async function buildRoom(renderer, rack, files) {
     setNight(out.night.at); out.arrived?.();                 // its materials take the time of day; the page redraws (start sets arrived)
   };
   await Promise.all(texLoads);
-  const later = files.later(), [cup, can, tube, ...brushes] = later;
-  vinyl.loadCovers();
+  out.loadProps = () => {                                    // the box's contents: started once the first frame is up (start), or the moment the box is chosen
+    out.loadProps = () => {};
+    const later = files.later(), [cup, can, tube, ...brushes] = later;
   cup.then(o => { o.traverse(m => { if (m.isMesh) { m.material.map = null; m.material.color.set('#f2efe8'); } }); settle(o, 'cup'); });   // plain white: the scan carries a noodle brand's print
   tube.then(o => { settle(o, 'tube', true); settle(o.clone(), 'tube-2', true); });
   can.then(o => settle(o, 'spraycan', true));
   brushes.forEach((b, i) => b.then(o => { settle(o, `paintbrush-${i + 1}`, true); if (!i) out.star = o; }));
   for (const f of later) f.catch(err => console.warn('room: a prop is missing', err));
+  };
   return out;
 }
 
@@ -1183,16 +1237,14 @@ function buildVinyl(tracks, tl, layout) {
   grp.add(top);
   const PER = layout.length / 4;                            // records per cube, as scripts/settle-records.py stood them
   const covers = [];
+  let coversOn = false;
   const sleeves = tracks.map((t, k) => {
     // the cover printed front and back; the edges and spine in the cover's own average colour, so a stack reads in its covers' colours
-    const edge = mat('#808080', .7), art = new THREE.MeshStandardMaterial({ roughness: .6 });
-    const map = new THREE.Texture();                         // its picture comes in loadCovers(), after the room is up
+    const edge = mat(t.avg ?? '#808080', .7), art = new THREE.MeshStandardMaterial({ roughness: .6 });
+    const map = new THREE.Texture();                         // its picture comes in loadCovers(), when the shelf is first zoomed
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8; art.color.set('#808080');
-    covers.push(() => new THREE.ImageLoader().load(new URL(`../${t.cover}`, ASSETS).href, img => {
-      map.image = img; map.needsUpdate = true; art.map = map; art.color.set('#fff'); art.needsUpdate = true;
-      const g = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
-      g.drawImage(img, 0, 0, 1, 1); const [r, gr, b] = g.getImageData(0, 0, 1, 1).data;
-      edge.color.setRGB(r / 255, gr / 255, b / 255, THREE.SRGBColorSpace);
+    covers.push(onLoad => new THREE.ImageLoader().load(new URL(`../${t.cover}`, ASSETS).href, img => {
+      map.image = img; map.needsUpdate = true; art.map = map; art.color.set('#fff'); art.needsUpdate = true; onLoad();
     }));
     const s = add(top, sleeve(), [edge, edge, edge, edge, art, art], ...layout[k].p);   // on its side, spine out, where the physics left it
     s.quaternion.set(...layout[k].q);
@@ -1253,7 +1305,7 @@ function buildVinyl(tracks, tl, layout) {
     const step = (DISPLAY.gap + .004) / Math.cos(a), x = c.x0 + DISPLAY.margin + .157 * Math.sin(a) + .004 * Math.cos(a), z = (c.z0 + c.z1) / 2;
     c.display = { angle: a, q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2 - a), at: c.recs.map((_, j) => new THREE.Vector3(x + j * step, c.y0, z)) };
   }
-  return { grp, top, cubes, sleeves, loadCovers: () => covers.forEach(f => f()), disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
+  return { grp, top, cubes, sleeves, loadCovers: onLoad => { if (!coversOn) { coversOn = true; covers.forEach(f => f(onLoad)); } }, disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
 }
 
 function softRoom(renderer) {

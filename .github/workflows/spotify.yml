@@ -23,6 +23,7 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+      - run: node scripts/cover-colors.mjs   # the spines' colours, so the covers can load lazily
       - name: Commit if changed
         run: |
           git add -A public/assets/data public/assets/covers
