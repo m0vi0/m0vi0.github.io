@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">   <!-- the browser's own scheme: the system's, or the visitor's choice (theme.js) -->
 <script src="/assets/theme.js"></script>
 <!-- the 3D layout from the first paint, not after rack.js has loaded the room (rack.js drops these classes if WebGL fails) -->
 <script>if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('has-3d', 'scan-on', 'room-on');</script>
@@ -18,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <!-- static files live in public/assets (bump ?v= on style.css when it changes: browsers cache it); the code in src/ is bundled by Vite -->
-<link rel="stylesheet" href="/assets/style.css?v=18">
+<link rel="stylesheet" href="/assets/style.css?v=19">
 <!-- start the rack's model download with the HTML instead of after rack.js parses (buildRack takes it; Safari never used a <link rel="preload"> for it) -->
 <script>window.rackGlb = fetch('/assets/rack.glb').then(r => r.ok ? r.arrayBuffer() : null, () => null);</script>
 <script type="module" src="/src/scene/rack.js"></script>
@@ -27,7 +28,7 @@
 <script type="module" src="/src/main.tsx"></script>
 </head>
 <body>
-<!-- phones: up from the first paint until the room is drawn (style.css .loader, rack.js loaded) -->
+<!-- up from the first paint until the room is drawn and warmed up (style.css .loader, rack.js loaded) -->
 <div class="loader"><span class="loader-mark">MS</span><span class="loader-term" role="status"><span aria-hidden="true">&gt;</span> <span class="loader-pct">0%</span><span class="loader-cursor" aria-hidden="true"></span><span class="sr-only">Loading</span></span></div>
 
 <header class="nav">
@@ -53,6 +54,10 @@
       <button type="button" class="rack-tip room-tip" data-at="box" hidden>Art box<small>Web dev &amp; UI/UX. Click to open.</small></button>
       <button type="button" class="rack-tip room-tip" data-at="vinyl" hidden>Record shelf<small>My Spotify top 40. Click to pick one.</small></button>
       <p class="rack-tip room-tip" data-at="window" hidden>Window<small>Click to switch day and night.</small></p>
+      <button type="button" class="rack-tip room-tip" data-at="lamp" hidden>Desk lamp<small>Click to switch it on or off.</small></button>
+      <button type="button" class="rack-tip room-tip" data-at="notepad" hidden>Notepad<small>Click for a fresh paper ball.</small></button>
+      <p class="rack-tip room-tip" data-at="clock" hidden>Wall clock<small>My time in India</small></p>
+      <p class="rack-tip room-tip" data-at="home" hidden>Based in India</p>
       <p class="sr-only" data-at="now" aria-live="polite" hidden>Record<small></small></p>
       <!-- phones only (rack.js): the shelf's covers to tap, what's playing, Stop and Back; at the box, only Back -->
       <div class="phone-ui"><div class="covers"></div><div class="phone-bar"><button type="button" class="phone-back" aria-label="Back">←</button><button type="button" class="phone-stop">■ Stop</button></div></div>
@@ -71,7 +76,7 @@
         <a class="btn" href="#projects">Projects</a>
         <a class="link" href="#contact">Contact</a>
       </div>
-      <p class="hint">Scroll to step into the room.</p>
+      <p class="hint">Scroll to step into the room.</p>   <!-- with a mouse rack.js says how to move the camera -->
     </div>
 
     <div class="scroll-cue" aria-hidden="true"><span></span></div>
@@ -86,7 +91,7 @@
       <li data-label="LinkedIn · GitHub"><a href="https://www.linkedin.com/in/mervin-sequeira-438a033b1/" data-line="in/mervin-sequeira">LinkedIn</a><a href="https://github.com/m0vi0" data-line="github.com/m0vi0">GitHub</a></li>
     </ol>
   </section>
-  <!-- scroll stops: hero, name plate, 6 servers, pull-back; rack.js maps scroll to the camera -->
+  <!-- phones: scroll stops (hero, name plate, 6 servers, pull-back); rack.js maps scroll to the camera. Desktop has no scroll tour -->
   <div class="stops" aria-hidden="true"><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span><span class="stop"></span></div>
   </div>
 
@@ -160,7 +165,7 @@
     <span>Mervin Sequeira · <a href="mailto:mervinsequeira485@gmail.com">mervinsequeira485@gmail.com</a></span>
     <span>Rack model “<a href="https://sketchfab.com/3d-models/server-rack-62f6779cb7e448b19aaf58544c3c7218">Server Rack</a>” by Spellkaze;
       the art box by ForgeCAD, the clock and cup by Palatial, the spray can, tubes and brushes from NVIDIA SimReady
-      (all <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). Desk lamp from Poly Haven, wall and floor textures from
+      (all <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>). Desk lamp and metal desk from Poly Haven (the rug, laptop and bin are my own), wall and floor textures from
       ambientCG (CC0). The record flip is after Animorio's print rack.</span>
   </p>
 </footer>

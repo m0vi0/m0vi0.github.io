@@ -1,11 +1,15 @@
 // The site's theme: <html data-theme="light|dark">, from the visitor's choice (saved in this browser) or else their system's, set before
 // the CSS paints. Every [data-theme-toggle] button flips it (the room's window blinds press the same button); rack.js watches the attribute.
+// <meta name="color-scheme"> follows too: "light dark" while the system decides, "light" or "dark" while a choice holds, so the browser's
+// own parts (scrollbars, form controls, the first frame) match. A flip back to what the system shows clears the choice, rather than pinning it.
 (() => {
   const root = document.documentElement, os = matchMedia('(prefers-color-scheme: light)');
   let saved = null;
   try { saved = localStorage.getItem('theme'); } catch {}
+  const scheme = document.querySelector('meta[name="color-scheme"]');
   const set = t => {
     root.dataset.theme = t;
+    if (scheme) scheme.content = saved ?? 'light dark';
     const meta = document.querySelector('meta[name="theme-color"][data-themed]');   // the browser's bar: the page's colour (the home page's yellow by day)
     meta?.setAttribute('content', t === 'light' ? meta.dataset.light ?? '#F5F0E8' : '#0D0D0D');
     for (const b of document.querySelectorAll('[data-theme-toggle]')) b.setAttribute('aria-label', t === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
@@ -18,9 +22,15 @@
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {   // the page's colours take the room's 3 s to change (style.css .theme-fading)
       root.classList.add('theme-fading'); clearTimeout(fading); fading = setTimeout(() => root.classList.remove('theme-fading'), 3000);
     }
-    saved = root.dataset.theme === 'light' ? 'dark' : 'light';
-    try { localStorage.setItem('theme', saved); } catch {}
-    set(saved);
+    const t = root.dataset.theme === 'light' ? 'dark' : 'light';   // the opposite of what shows; the system's own is no choice
+    saved = t === (os.matches ? 'light' : 'dark') ? null : t;
+    try { saved ? localStorage.setItem('theme', saved) : localStorage.removeItem('theme'); } catch {}
+    set(t);
   });
   document.addEventListener('DOMContentLoaded', () => set(root.dataset.theme));   // the buttons' labels, now that they exist
+  addEventListener('storage', e => {                          // a flip in another tab
+    if (e.key !== 'theme') return;
+    saved = e.newValue === 'light' || e.newValue === 'dark' ? e.newValue : null;
+    set(saved ?? (os.matches ? 'light' : 'dark'));
+  });
 })();

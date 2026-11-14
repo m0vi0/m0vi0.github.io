@@ -2,8 +2,16 @@
 // Scrolling flies the camera in to the top server, then down the rack one server per stop; each server wears its own label.
 import * as THREE from 'three';
 import { buildRack, SERVER_FRONT } from './rack-build.js';   // the rack itself
+import { buildRug } from './rug.js';
+import { buildLaptop } from './laptop.js';
+import { buildPaper, paperCheck, MAX } from './paper.js';
+import { buildNotepad, crumpleSheet } from './notepad.js';
 // the models, textures and data are static files in public/assets (they keep their URLs; Vite only bundles the code)
 const ASSETS = new URL(`${import.meta.env.BASE_URL}assets/`, location.href);
+// GPU-compressed textures (KTX2: the room's floor and walls, the rack's own maps) take a fraction of a decoded image's video memory. One loader,
+// made on first use; its transcoder is three's own, copied to public/basis (as Draco's decoder is to public/draco)
+let ktx2Loader = null;
+const ktx2 = renderer => ktx2Loader ??= import('three/addons/loaders/KTX2Loader.js').then(({ KTX2Loader }) => new KTX2Loader().setTranscoderPath(new URL('../basis/', ASSETS).href).detectSupport(renderer));
 
 // a refresh always lands on the hero, even with a #section left in the URL; arriving via a #section link still jumps
 history.scrollRestoration = 'manual';
@@ -14,9 +22,10 @@ const nav = document.querySelector('.nav');
 const onScroll = () => nav.classList.toggle('is-scrolled', scrollY > 40);
 addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
-// phones' loading screen (index.html .loader): the share of the room's files that are in, gone once the room is drawn
-// shortcut: ROOM_FILES is counted by hand (the rack, the loader libs, 3 JSON + 3 models, 9 textures); recount when the room's files change
-const ROOM_FILES = 17, loader = document.querySelector('.loader'), pct = loader?.querySelector('.loader-pct');
+// the loading screen (index.html .loader): the share of the room's files that are in, gone once the room is drawn and warmed up (start)
+// shortcut: ROOM_FILES is counted by hand (the rack, the loader libs, 3 JSON + 4 models, 9 textures, the box's props, the covers); recount when
+// the room's files change
+const ROOM_FILES = 20, loader = document.querySelector('.loader'), pct = loader?.querySelector('.loader-pct');
 let filesIn = 0;
 const track = p => { const up = () => { if (pct) pct.textContent = `${Math.min(99, Math.round(++filesIn / ROOM_FILES * 100))}%`; }; p.then(up, up); return p; };
 const loaded = () => { if (!loader) return; if (pct) pct.textContent = '100%'; loader.addEventListener('transitionend', () => loader.remove(), { once: true }); loader.classList.add('done'); };
@@ -60,7 +69,7 @@ async function start() {
   const scanOn = !reduce && !!scan;                          // the faceplates draw differently in scan mode
   const files = roomFiles();                                 // the room's downloads start now, alongside the rack's
   track(window.rackGlb);
-  const { rackRoot, units, frameMesh, blink, top: rackTopY } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn);
+  const { rackRoot, units, frameMesh, blink, top: rackTopY } = await buildRack([...document.querySelectorAll('.rack > li')], scanOn, ktx2(renderer));
   const room = await buildRoom(renderer, new THREE.Box3().setFromObject(rackRoot), files);
   // the room and the rack ride one lift: on load it rises from below, turning, and settles past its mark (stepRise).
   // lift turns about the room's middle; inner puts the rack back at the origin, so poses and picking are untouched once it settles
@@ -74,15 +83,15 @@ async function start() {
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // shadows redraw on animated frames only (tick), not on the clock's idle ticks
     document.documentElement.classList.add('room-on');
-    if (new URLSearchParams(location.search).has('probe')) window.probe = { camera, room, renderer, scene, player: () => ({ ...V }) };   // test hook for the scripted checks
+    if (new URLSearchParams(location.search).has('probe')) window.probe = { camera, room, renderer, scene, player: () => ({ ...V }), paper: room.paper, paperCheck, THREE };   // test hook for the scripted checks
     for (const el of document.querySelectorAll('.room-tip')) tips[el.dataset.at] = el;
     tips.now = document.querySelector('[data-at="now"]');   // what's playing
     // with a mouse, the labels show as the cursor's tooltip on hover (src/components/room-tooltip.tsx): in the scene they stay for the keyboard
     // (shown while focused) and for phones, which have no hover. The now-playing label stays, since it holds a link
     if (hoverable) for (const [at, el] of Object.entries(tips)) if (at !== 'now') el.classList.add('quiet');
-    for (const at of ['rack', 'box', 'vinyl']) tips[at].addEventListener('click', () => choose(at));
+    for (const at of ['rack', 'box', 'vinyl', 'lamp', 'notepad']) tips[at].addEventListener('click', () => choose(at));
     if (!hoverable) {                                       // phones: short "Tap" labels, and the shelf's covers as a row of buttons (style.css .phone-ui)
-      const short = { rack: 'Tap to power on', box: 'Tap to open', vinyl: 'Tap to pick a record', window: 'Tap for day / night' };
+      const short = { rack: 'Tap to power on', box: 'Tap to open', vinyl: 'Tap to pick a record', window: 'Tap for day / night', lamp: 'Tap to switch it on or off' };
       for (const [at, s] of Object.entries(short)) tips[at].querySelector('small').textContent = s;
       const star = tips.star.querySelector('small'); star.textContent = star.textContent.replace('Click', 'Tap');
       const ui = document.querySelector('.phone-ui'), covers = ui.querySelector('.covers');
@@ -94,6 +103,7 @@ async function start() {
     // the room follows the site's theme (assets/theme.js): light is day, dark is night
     const n = room.night, night = () => document.documentElement.dataset.theme !== 'light';
     n.at = n.to = night() ? 1 : 0; n.set(n.at);
+    room.setSun(sunDay()); setInterval(() => { room.setSun(sunDay()); wake(); }, 60e3);   // the sun follows the time in India, a minute at a time
     new MutationObserver(() => { n.to = night() ? 1 : 0; wake(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     if (!reduce) rise = -1;                                 // starts on the first frame drawn (stepRise)
   } else document.documentElement.classList.remove('room-on');   // set early by index.html's head script
@@ -102,21 +112,25 @@ async function start() {
   document.documentElement.classList.add('has-3d');
   if (scanOn) document.documentElement.classList.add('scan-on');   // index.html's head script already set it, before the first paint
   else document.querySelector('.hint').textContent = 'Projects and contact are below.';
+  // desktop: no scroll tour. The landing is one screen with a free camera (Blender's controls); the stops are only clicks and keys away
+  const free = scanOn && hoverable && !!room;
+  if (free) document.documentElement.classList.add('free-cam');   // no scroll tour: style.css hides the scroll cue
+  if (free) document.querySelector('.hint').textContent = 'Swipe to orbit · ⌘-swipe or pinch to zoom · Shift-swipe to pan · click the rack to step in';
   let sTarget = 0, sCur = 0;
   // phones: the rack or the box opens in place, like the shelf: the page holds still and a vertical swipe steps between its stops (inside.lo..hi; the box's step is the brush)
   let inside = null;
   const brush = { to: 0, k: 0 };                             // the box's close look at the SmashBid brush, eased like zoom.k
   const span = () => scan.offsetHeight - hero.offsetHeight;
-  function readScroll() { if (inside) return; sTarget = span() > 0 ? Math.min(Math.max(-scan.getBoundingClientRect().top / span(), 0), 1) * (STOPS - 1) : 0; }
+  function readScroll() { if (inside || free) return; sTarget = span() > 0 ? Math.min(Math.max(-scan.getBoundingClientRect().top / span(), 0), 1) * (STOPS - 1) : 0; }
   const stopTop = n => scan.getBoundingClientRect().top + scrollY + n * span() / (STOPS - 1);
-  const goStop = n => scrollTo({ top: stopTop(n) });
+  const goStop = n => free ? (n ? flyTo(n) : jump(poses[0], true)) : scrollTo({ top: stopTop(n) });   // desktop: the top is the landing, reset
   // a click on the rack, the box or the background: the page moves to that stop at once, and the camera flies straight from where it is to
   // there (placeCamera), past nothing in between, while the labels are already at the stop
   function takeOff() {
     const css = ['--p', '--dof'].map(k => parseFloat(hero.style.getPropertyValue(k)) || 0);   // the page's fade where it was: it follows the flight too (updateScan)
     fly = { pos: camera.position.clone(), look: look.clone(), fov: camera.fov, shift: [...shiftNow], t0: performance.now(), css, e: 0 };
   }
-  function flyTo(n) { takeOff(); scrollTo({ top: stopTop(n), behavior: 'instant' }); readScroll(); sCur = sTarget; updateScan(); wake(); }
+  function flyTo(n) { takeOff(); if (free) sTarget = n; else { scrollTo({ top: stopTop(n), behavior: 'instant' }); readScroll(); } sCur = sTarget; updateScan(); wake(); }
   function openIn(n, range) {                               // phones: fly to stop n without moving the page, and hold it there
     takeOff(); inside = range; stage.dataset.inside = ''; document.documentElement.style.overflow = 'hidden';
     sTarget = sCur = n; updateScan(); wake();
@@ -141,6 +155,7 @@ async function start() {
     renderer.setSize(W, H, false);
     aspect = W / H; camera.aspect = aspect; camera.updateProjectionMatrix();
     buildPoses();
+    if (free && cam.home) { setFree(poses[0].pos, poses[0].look); cam.sh = [...poses[0].shift]; }   // the landing refits until it is moved
   }
   function buildPoses() {
     const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -154,11 +169,6 @@ async function start() {
     }
     const yaw = 0.46, pitch = 0.1;                         // shows the side with the hazard labels
     let heroPose = { pos: new THREE.Vector3(Math.sin(yaw) * heroFar, Math.sin(pitch) * heroFar, Math.cos(yaw) * heroFar), look: new THREE.Vector3(), shift };
-    // stand back along dir from a box until its bounding sphere fits fw x fh of the screen
-    const view = (b, dir, fw, fh, sh = [0, 0]) => {
-      const s = b.getBoundingSphere(new THREE.Sphere()), d = Math.max(s.radius / (fw * t * aspect), s.radius / (fh * t));
-      return { look: s.center, pos: new THREE.Vector3(...dir).normalize().multiplyScalar(d).add(s.center), shift: sh };
-    };
     const open = [1, .6, 1];                               // the room's open corner: both walls, the floor and the stalk under it show
     if (room) {                                             // the whole room on its stalk: overlapping the end of the name (wide), or between the name and the copy (portrait)
       const box = stage.getBoundingClientRect(), name = hero.querySelector('.wordmark .last').getBoundingClientRect();
@@ -191,10 +201,55 @@ async function start() {
       view(room.box, [0, 3, .6], aspect < 1 ? .95 : 1.32, 1.3),   // the showcase: close, almost straight down into the box (phones: back a bit, so the brush fits)
       eye(.86 * Z, .8 * Z)];                // the end: back to the room's close-up, to play with
   }
+  // stand back along dir from a box until its bounding sphere fits fw x fh of the screen
+  function view(b, dir, fw, fh, sh = [0, 0]) {
+    const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2)), s = b.getBoundingSphere(new THREE.Sphere()), d = Math.max(s.radius / (fw * t * aspect), s.radius / (fh * t));
+    return { look: s.center, pos: new THREE.Vector3(...dir).normalize().multiplyScalar(d).add(s.center), shift: sh };
+  }
+  // ---- desktop's free camera: it orbits pivot at dist, turned yaw about y and tipped pitch up; sh is its lens shift (the landing's, eased to 0 once moved).
+  // home: untouched since the landing, so a resize refits it. It rests at the landing (sTarget 0); the stops keep their own poses
+  const cam = { pivot: new THREE.Vector3(), dist: 1, yaw: 0, pitch: 0, sh: [0, 0], home: true }, fp = { pos: new THREE.Vector3(), look: cam.pivot, shift: cam.sh }, fv = new THREE.Vector3();
+  const PM = THREE.MathUtils.degToRad(85);
+  function setFree(pos, at) { cam.pivot.copy(at); fv.subVectors(pos, at); cam.dist = fv.length(); cam.yaw = Math.atan2(fv.x, fv.z); cam.pitch = Math.asin(fv.y / cam.dist); }
+  function freePose() { const c = Math.cos(cam.pitch); fp.pos.set(c * Math.sin(cam.yaw), Math.sin(cam.pitch), c * Math.cos(cam.yaw)).multiplyScalar(cam.dist).add(cam.pivot); fp.shift = cam.sh; return fp; }
+  const clear = () => { const p = freePose().pos, s = room.shell; return p.x > s.min.x + T + .05 && p.z > s.min.z + T + .05 && p.y > -.95; };   // never behind a wall or under the floor
+  function jump(p, home = false) {                           // a key's view (or Home): the camera glides there (takeOff) and stays free
+    takeOff(); cam.home = home; setFree(p.pos, p.look); cam.sh = home ? [...p.shift] : [0, 0];   // the landing's lens shift stays while the camera moves (what is under the pointer stays there); a key's view is centred
+    sTarget = sCur = 0; zoom.at = null; showing = null; pickServer(null); updateScan(); wake();
+  }
+  function loose() {                                         // a wheel or drag at a stop, mid-flight or at the shelf: free from right where the camera is
+    cam.home = false;
+    if (!sTarget && !fly && !zoom.k) return;
+    setFree(camera.position, look); cam.sh = [...shiftNow]; fly = null; zoom.at = null; zoom.k = 0; showing = null; pickServer(null); sTarget = sCur = 0; updateScan();
+  }
+  const depthAt = ev => (pick(ev), ray.intersectObjects([rackRoot, room.root], true)[0]?.point ?? null);   // the room's surface under the pointer
+  function nudge(m, a, b, P) {                               // orbit or pan by a drag of a, b px, or zoom by a factor a
+    loose();
+    const was = clear(), { yaw, pitch, dist } = cam, at = cam.pivot.clone();
+    if (m === 'zoom') {                                      // b: the pointer. In, as Blender with zoom to mouse position and auto depth: toward what is under it, which the orbit then turns
+      const top = Math.max(12, dist, poses[0].pos.distanceTo(poses[0].look) + .5);   // around. Out: the pivot eases back to the landing's, all the way out it is the landing framing
+      if (a < 1 && b) {
+        const c = freePose().pos.clone(), v = fv.subVectors(cam.pivot, c).normalize().clone(), hit = depthAt(b), d = hit ? Math.max(hit.sub(c).dot(v), .4) : dist;   // the depth under the pointer
+        const P = ray.ray.at(d / ray.ray.direction.dot(v), new THREE.Vector3()), k = Math.max(d * a, .4) / d;   // there, on the pointer's ray; P stays put on screen
+        setFree(c.sub(P).multiplyScalar(k).add(P), v.multiplyScalar(d * k).add(c));
+      } else if (a > 1) { const to = Math.min(dist * a, top); if (top > dist) cam.pivot.lerp(poses[0].look, (to - dist) / (top - dist)); cam.dist = to; }
+      else cam.dist = Math.max(dist * a, .4);
+    } else if (m === 'pan') {                                  // the pivot slides in the screen's plane, as far as the pointer moved at its depth
+      const s = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / H, e = camera.matrixWorld.elements;
+      cam.pivot.x += (-a * e[0] + b * e[4]) * s; cam.pivot.y += (-a * e[1] + b * e[5]) * s; cam.pivot.z += (-a * e[2] + b * e[6]) * s;
+    } else {                                                 // orbit; with P (what is under the pointer, Blender's auto depth) the turn is about P, which stays put on screen
+      const c = freePose().pos.clone();
+      cam.yaw -= a * .005; cam.pitch = Math.min(Math.max(pitch + b * .005, Math.min(-PM, pitch)), Math.max(PM, pitch));
+      if (P) { const q = new THREE.Quaternion().setFromAxisAngle(fv.set(0, 1, 0), cam.yaw - yaw).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)), pitch - cam.pitch)); setFree(c.sub(P).applyQuaternion(q).add(P), at.clone().sub(P).applyQuaternion(q).add(P)); }
+    }
+    if (was && !clear()) { Object.assign(cam, { yaw, pitch, dist }); cam.pivot.copy(at); }   // a move through a wall is refused
+    wake();
+  }
   function placeCamera() {
     if (portal) return;
     let a = poses[0], b = a, k = 0;
-    if (poses.length > 1) {                                 // hold near each stop, move between them
+    if (free && !sCur) a = b = freePose();
+    else if (poses.length > 1) {                                 // hold near each stop, move between them
       const i = Math.min(Math.max(Math.floor(sCur), 0), poses.length - 2), f = Math.min(Math.max((sCur - i - .2) / .6, 0), 1);
       a = poses[i]; b = poses[i + 1]; k = f * f * (3 - 2 * f);
     }
@@ -353,13 +408,18 @@ async function start() {
     const r = canvas.getBoundingClientRect(); box.getCenter(tc).project(camera);
     return Math.hypot((tc.x + 1) / 2 * r.width + r.left - ev.clientX, (1 - tc.y) / 2 * r.height + r.top - ev.clientY);
   }
-  function which(ev) {                                     // 'rack', 'box', 'vinyl', 'window' or null under the pointer: the nearest of their own meshes it touches, as on the shelf (what you see is what you tap)
+  function which(ev) {                                     // 'rack', 'box', 'vinyl', 'window', 'lamp', 'clock', 'notepad', 'home' or null under the pointer: the nearest of their own meshes it touches, as on the shelf (what you see is what you tap)
     pick(ev); let best = null, bd = Infinity;
-    for (const [k, o] of [['rack', rackMeshes], ['box', [room.art]], ['window', [room.win]]]) { const d = ray.intersectObjects(o, true)[0]?.distance ?? Infinity; if (d < bd) { bd = d; best = k; } }
+    for (const [k, o] of [['rack', rackMeshes], ['box', [room.art]], ['window', [room.win]], ['lamp', [room.vinyl.lamp]], ['clock', [room.clock]], ['notepad', [room.pad.grp]]]) { const d = ray.intersectObjects(o, true)[0]?.distance ?? Infinity; if (d < bd) { bd = d; best = k; } }
     const v = shelfHit(ev); if (v.any && v.d < bd) best = 'vinyl';
+    // the rug's "you" arrow: within 10 cm of the rug's middle, on its top (a plane, not the pile: its tufts are too many to raycast on every move)
+    const d = ray.ray.intersectPlane(rugTop, tc) && tc.distanceTo(room.homeAt) < .1 ? ray.ray.origin.distanceTo(tc) : Infinity; if (d < bd) best = 'home';
     return best;
   }
+  const rugTop = new THREE.Plane(new THREE.Vector3(0, 1, 0), -room?.homeAt.y);
+  let ptr = null;                                           // the pointer's last place over the room (numpad . frames what is under it)
   canvas.addEventListener('pointermove', ev => {
+    ptr = ev;
     if (portal) return;
     if (drag) return;
     if (!zoom.at && !choosing() && !(Math.abs(sCur - BOX) < .5)) hoverLabel(null);
@@ -382,10 +442,60 @@ async function start() {
   // a tap is the browser's own click (it knows a tap from a scroll); only a drag that turned the view drops the click it ends in
   let drag = null, dragged = false;
   const touches = new Map(), mid = () => { let x = 0, y = 0; for (const t of touches.values()) { x += t.x / touches.size; y += t.y / touches.size; } return { x, y }; };
+  // the paper minigame takes a press that lands on a ball (claim returns true, so the camera leaves it alone): held, it is carried; let go, it drops
+  let claim = null;
+  if (room) {
+    const { paper } = room, chip = document.body.appendChild(Object.assign(document.createElement('p'), { className: 'sr-only', ariaLive: 'polite' }));   // the tally is on the desk's sticky note (paper.js); this says it
+    let grab = null;
+    paper.onScore = n => { sfx('click'); chip.textContent = `${n} in the bin`; };
+    padTip();
+    const ballAt = ev => {                                  // the resting ball under the pointer, if it is the nearest thing there: a ball hidden behind the shelf or the lid stays put
+      const r = canvas.getBoundingClientRect(); ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
+      const b = ray.intersectObjects([rackRoot, room.root], true)[0]?.object.userData.ball;
+      return b?.s === 'rest' ? b : null;
+    };
+    // phones: a drag that starts on the ball carries it, so the browser must not take it as a page scroll (the pointer events still come).
+    // grab: pointerdown comes first, so claim may already hold the ball (no longer 'rest' for ballAt)
+    canvas.addEventListener('touchstart', ev => { if (ev.touches.length === 1 && (grab || !portal && !rise && !fly && ballAt(ev.touches[0]))) ev.preventDefault(); }, { passive: false });
+    claim = ev => {
+      if (portal || rise || fly || Math.abs(sTarget - sCur) > .05 || (ev.pointerType === 'mouse' && ev.button)) return false;   // not mid-flight: the aim needs a still camera
+      const b = ballAt(ev); if (!b) return false;
+      grab = { b, id: ev.pointerId }; dragged = true;   // dragged: the click this ends in is dropped
+      canvas.setPointerCapture(ev.pointerId); aimAt(ev); return true;
+    };
+    // the slingshot: a press on a ball lifts it into the sling and a drag pulls it back (paper.aimRay: in its upright plane to the bin), while the
+    // ghost shows the throw: dots along the arc paper.predict runs, shrinking as they go, and a ring where it first lands (lime: in the bin)
+    const DOTS = 60, M4 = new THREE.Matrix4(), unlit = c => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: .85, depthWrite: false, side: THREE.DoubleSide });
+    const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(.006, 8, 6), unlit('#fff'), DOTS), ring = new THREE.Mesh(new THREE.RingGeometry(.035, .045, 32).rotateX(-Math.PI / 2), unlit('#fff'));
+    dots.frustumCulled = false; dots.count = 0; dots.visible = ring.visible = false; paper.grp.add(dots, ring);
+    const ghost = on => {
+      dots.visible = ring.visible = on;
+      if (!on) return;
+      const { points, end, inBin } = paper.predict(grab.b), n = Math.min(points.length, DOTS);
+      for (let i = 0; i < n; i++) { const k = 1 - .7 * i / n; dots.setMatrixAt(i, M4.makeScale(k, k, k).setPosition(points[i])); }
+      dots.count = n; dots.instanceMatrix.needsUpdate = true;
+      ring.position.set(end.x, end.y - .028, end.z); ring.material.color.set(inBin ? '#BFFF00' : '#fff');
+    };
+    const aimAt = ev => {
+      const r = canvas.getBoundingClientRect(); ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
+      const b = grab.b; paper.aimRay(b, ray.ray); ghost(b.p.distanceTo(b.anchor) >= .03); canvas.style.cursor = 'grabbing'; wake();   // a slack pull shows no throw
+    };
+    canvas.addEventListener('pointermove', ev => { if (grab?.id === ev.pointerId) aimAt(ev); });
+    const letGo = ev => {                                   // up: it flies; cancelled: it drops back
+      if (grab?.id !== ev.pointerId) return;
+      paper.launch(grab.b, ev.type === 'pointerup' ? undefined : new THREE.Vector3()); grab = null; ghost(false); canvas.style.cursor = ''; wake();
+    };
+    for (const t of ['pointerup', 'pointercancel']) canvas.addEventListener(t, letGo);
+  }
   if (room) {
     canvas.addEventListener('pointerdown', ev => {
+      if (claim?.(ev)) return;
       if (portal || rise) return;
       dragged = false;                                      // a swipe that ended without a click must not eat the next tap
+      if (free && ev.pointerType === 'mouse' && ev.button < 2) {   // desktop, as in Blender: middle (or Alt + left) orbits, with Shift pans, with Ctrl zooms; a plain left drag orbits too
+        const b3 = ev.button === 1 || ev.altKey;
+        drag = { x: ev.clientX, y: ev.clientY, ev, on: false, m: b3 && ev.shiftKey ? 'pan' : b3 && ev.ctrlKey ? 'zoom' : 'orbit' }; canvas.setPointerCapture(ev.pointerId); return;
+      }
       if (ev.pointerType === 'touch') { if (ev.isPrimary) touches.clear(); touches.set(ev.pointerId, { x: ev.clientX, y: ev.clientY }); drag = touches.size === 2 ? { ...mid(), on: true } : touches.size === 1 ? { x: ev.clientX, y: ev.clientY, on: false, one: true } : null; return; }
       if (ev.button === 0) { drag = { x: ev.clientX, y: ev.clientY, on: false }; canvas.setPointerCapture(ev.pointerId); }
     });
@@ -396,6 +506,7 @@ async function start() {
       if (!drag.on && Math.hypot(dx, dy) < (drag.one ? 10 : 5)) return;
       if (drag.one && !drag.on && Math.abs(dx) <= Math.abs(dy)) return;   // a mostly vertical swipe belongs to the page scroll, and is no tap
       drag.on = true; drag.x = at.x; drag.y = at.y; canvas.style.cursor = 'grabbing';
+      if (free) return void (drag.m === 'zoom' ? nudge('zoom', Math.exp(dy * .005), drag.ev) : nudge(drag.m, dx, dy, drag.m === 'orbit' ? drag.P ??= depthAt(drag.ev) : null));
       orb.y = Math.min(Math.max(orb.y - dx * .005, -Math.PI / 3), Math.PI / 3); if (!drag.one) orb.p = Math.min(Math.max(orb.p + dy * .005, -1.4), 1.4);
       orb.back = false; wake();
     });
@@ -413,6 +524,48 @@ async function start() {
     };
     for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(t, release);
     canvas.addEventListener('click', ev => { if (dragged) { dragged = false; ev.stopImmediatePropagation(); } }, true);
+    canvas.addEventListener('mousedown', ev => { if (ev.button === 1) ev.preventDefault(); });   // no autoscroll from the middle button
+  }
+  if (free) {
+    // the landing is one screen, with Blender's trackpad controls: a swipe orbits, Shift + swipe pans, Cmd + swipe (Blender's Ctrl, on a Mac) or a pinch (which comes as Ctrl + wheel) zooms.
+    // A mouse wheel zooms, and with Ctrl it is the browser's page zoom. Zoomed all the way out at the landing, a scroll down goes on to the footer.
+    // At a stop (a click took the camera to a server or the box) the wheel steps stop to stop, as the old scroll tour did; a pinch leaves and zooms
+    let acc = 0, stepT = -1e9, orbP = null, orbT = -1e9;   // orbP: the point a swipe turns about, taken when the swipe starts
+    document.addEventListener('wheel', e => {
+      if (e.target.closest?.('.footer') || scrollY > 0) return;
+      const px = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 800 : 1, dy = e.deltaY * px;
+      const mouse = e.deltaMode === 1 || (!e.deltaX && e.wheelDeltaY && !(e.wheelDeltaY % 120));   // shortcut: heuristic, some smooth-scroll mice read as trackpads
+      if (mouse && e.ctrlKey) return;
+      const z = e.ctrlKey || e.metaKey, at = !z && sTarget >= FIRST && sTarget <= BOX;
+      if (!at && dy > 0 && !z && !e.shiftKey && cam.dist >= poses[0].pos.distanceTo(poses[0].look) + .49) return;
+      e.preventDefault(); if (portal || rise) return;
+      if (at) {                                             // ~60 px of scroll a step, then a pause so a trackpad's glide does not run on down the rack
+        if (e.timeStamp - stepT < 450) return;
+        if (Math.sign(dy) !== Math.sign(acc)) acc = 0;
+        if (Math.abs(acc += dy) >= 60) { const n = Math.round(sTarget) + Math.sign(acc); acc = 0; stepT = e.timeStamp; if (n >= FIRST && n <= BOX) flyTo(n); }
+        return;
+      }
+      if (mouse || z) nudge('zoom', 1.1 ** (dy / (e.ctrlKey ? 20 : 100)), e);   // a mouse's notch is 100 px: 10% a notch
+      else if (e.shiftKey) nudge('pan', -e.deltaX * px, -dy);
+      else { if (e.timeStamp - orbT > 250) orbP = depthAt(e); orbT = e.timeStamp; nudge('orbit', -e.deltaX * px, -dy, orbP); }   // the fingers drag the room, as a mouse drag does
+    }, { passive: false });
+    // numpad 1 / 3 / 7 (or the number row's, for a laptop, as Blender's emulate numpad): the whole room from the front, the right, the top. With Ctrl Blender looks from the back, left or bottom, which here is outside
+    // the walls or under the floor, so Ctrl changes nothing. Numpad . frames what is under the pointer, Home goes back to the landing; at a server
+    // the arrows (or numpad 8 / 2) step up and down the rack and on to the box; Esc goes back (leave)
+    addEventListener('keydown', e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || portal || rise || e.target.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      const c = e.code, at = sTarget >= FIRST && sTarget <= BOX ? sTarget : 0, dir = { Numpad1: [0, 0, 1], Numpad3: [1, 0, 0], Numpad7: [0, 1, 1e-3] }[c.replace('Digit', 'Numpad')];   // top: a hair off straight down, so it keeps a heading
+      if (dir) jump(view(room.shell, dir, .9, .9));
+      else if (c === 'NumpadDecimal') {                     // the thing under the pointer: its whole part of the room (the rack, the desk, the shelf...), the walls and floor being the room
+        let o = ptr && (pick(ptr), ray.intersectObjects([rackRoot, room.root], true)[0]?.object);
+        while (o && o !== rackRoot && o.parent !== room.root) o = o.parent;
+        jump(view(o ? new THREE.Box3().setFromObject(o) : room.shell, fv.subVectors(camera.position, look), .8, .8));
+      } else if (c === 'Home' && !scrollY) jump(poses[0], true);
+      else if (at && (c === 'ArrowUp' || c === 'Numpad8')) { if (at > FIRST) flyTo(at - 1); }
+      else if (at && (c === 'ArrowDown' || c === 'Numpad2')) { if (at < BOX) flyTo(at + 1); }
+      else return;
+      e.preventDefault();
+    });
   }
   canvas.addEventListener('pointerleave', ev => { setHot(null); starHot = winHot = false; toolHot = recHot = null; hoverLabel(null); for (const F of flips) F.on = false; if (hovers(ev)) pickServer(null); });
   // every zoom in the room has a way out: a click on the background, or Esc, goes back to the close-up of the whole room
@@ -422,11 +575,43 @@ async function start() {
     else if (zoom.at) zoom.at = null;
     else if (brush.to) brush.to = 0;
     else if (inside) closeIn();
-    else { pickServer(null); flyTo(homeStop); }
+    else { pickServer(null); flyTo(free ? 0 : homeStop); }   // desktop: the free camera where it was left
     wake();
   }
+  let homeOn = false, homeWas = false, clockUntil = 0;     // phones: the rug's "Based in India" label and the clock's, after a tap
+  // the notepad: a click tears off its top sheet, which crumples on the pad (.6 s, stepped in tick) into a paper ball, then paper.js has it
+  let tearing = null;
+  function padTip() {
+    const n = room.pad.left;
+    tips.notepad.querySelector('small').textContent = n ? `${hoverable ? 'Click' : 'Tap'} for a fresh paper ball (${n} left).` : 'Out of paper.';
+    if (hoverAt === 'notepad') { hoverAt = null; hoverLabel('notepad'); }
+  }
+  function tear() {
+    const { pad, paper } = room;
+    if (tearing || !pad.left || paper.balls.length >= MAX) return;
+    pad.take(); padTip(); sfx('crumple');
+    const s = crumpleSheet(paper.balls.length + 1), holder = new THREE.Group();
+    holder.position.y = pad.topY() + .001; holder.add(s.mesh); pad.grp.add(holder);   // the sheet lies where the top sheet was
+    tearing = { s, holder, t0: performance.now() }; wake();
+  }
+  function stepTear() {                                     // true while it crumples
+    const k = reduce ? 1 : Math.min((performance.now() - tearing.t0) / 600, 1), m = tearing.s.mesh;
+    tearing.s.set(k);
+    if (k < 1) return true;
+    const p = m.getWorldPosition(new THREE.Vector3()); m.getWorldQuaternion(m.quaternion);   // a ball now, resting on the pad: paper.js's
+    room.pad.grp.remove(tearing.holder); const b = room.paper.spawn(p, m); tearing = null;
+    if (b) {                                                // a small hop off the pad's back, toward the wall (13-20 cm, onto the desk, behind the pad as you look at it),
+      const n = room.paper.balls.length, fan = ((n % 5) - 2) * .17;   // fanned ball to ball (-20..20 deg) and a little longer or shorter, so they spread: the pad stays clear to click
+      b.v.set(Math.sin(fan), 0, -Math.cos(fan)).applyQuaternion(room.pad.grp.quaternion).multiplyScalar(.55 + (n % 3) * .1).setY(.5); b.sleep = false;
+    }
+    return false;
+  }
   function choose(w) {                                     // rack: it powers on, then the camera goes in to the top server. box: straight to the showcase, where the tools hop
+    if (w === 'clock') { if (!hoverable) { clockUntil = performance.now() + 2500; setTimeout(wake, 2600); wake(); } return; }   // nothing to do: it tells the time (with a mouse, on hover)
+    if (w === 'notepad') return tear();
+    if (w === 'home') { if (!hoverable) { homeOn = !homeWas; if (homeOn) sfx('click'); } return void wake(); }   // with a mouse its tooltip shows on hover; phones: a tap shows its label
     sfx('click');
+    if (w === 'lamp') return void (room.lamp(), wake());
     if (w !== 'window' && w !== 'vinyl') homeStop = sCur > STOPS - 1.5 ? STOPS - 1 : FIRST - 1;
     if (w === 'window') return void document.querySelector('[data-theme-toggle]')?.click();   // the window: the site's theme toggle, day or night for the room and the page
     if (w === 'rack') { const was = powered; toRack(); if (!hoverable) openIn(FIRST, { lo: FIRST, hi: BOX - 1 }); else setTimeout(() => flyTo(FIRST), was || reduce ? 0 : 700 * SLOW); }   // phones: no waiting for the power-on
@@ -471,6 +656,11 @@ async function start() {
       const n = noise(ac, .04), hp = new BiquadFilterNode(ac, { type: 'highpass', frequency: 3000 });
       n.connect(hp).connect(env(ac, t, .15, .001, .03)); n.start(t);
       const o = new OscillatorNode(ac, { frequency: 2000 }); o.connect(env(ac, t, .06, .001, .025)); o.start(t); o.stop(t + .04);
+    } else if (kind === 'crumple') {                        // paper: a run of short crackles at random pitches
+      for (let i = 0; i < 8; i++) {
+        const s = t + i * .07 + Math.random() * .03, n = noise(ac, .06), bp = new BiquadFilterNode(ac, { type: 'bandpass', frequency: 1800 + Math.random() * 3000, Q: .8 });
+        n.connect(bp).connect(env(ac, s, .06 + Math.random() * .08, .002, .05)); n.start(s);
+      }
     } else {                                                // drawer: rail slide (swept band-passed noise), then a low thump as it stops
       const n = noise(ac, .5), bp = new BiquadFilterNode(ac, { type: 'bandpass', frequency: 600, Q: 1.2 });
       bp.frequency.exponentialRampToValueAtTime(1600, t + .45);
@@ -481,6 +671,7 @@ async function start() {
   }
   canvas.addEventListener('click', tap);
   function tap(ev) {
+    homeWas = homeOn; homeOn = false;                       // any click closes the rug's pop-up (a click on the arrow reopens it: choose)
     if (portal) return;
     if (zoom.at) {                                          // the shelf: a click shows the record under it, a click on the shown cover plays it,
       const touch = ev.pointerType !== 'mouse', k = cubeAt(ev);   // the turntable stops it, a click anywhere else puts the shown one back (or steps out)
@@ -494,7 +685,7 @@ async function start() {
       else if (!h.any) zoom.at = null;
       wake(); return;
     }
-    if (choosing()) { const w = which(ev); if (w) choose(w); else if (sCur > .5 && !ray.intersectObject(room.root, true)[0]) flyTo(0); return; }   // the page behind the room: back to the landing
+    if (choosing()) { const w = which(ev); if (w) choose(w); else if (!ray.intersectObject(room.root, true)[0]) { if (sCur > .5) flyTo(0); else if (free && !cam.home) jump(poses[0], true); } return; }   // the page behind the room: back to the landing (from a stop, or a moved camera)
     if (Math.abs(sCur - BOX) < .5) {                       // the showcase: the Badminton brush opens SmashBid (its label is the link); the background steps back
       pick(ev); const h = ray.intersectObjects(room.tools, true)[0]?.object;   // a tool: under the tap, or else the nearest within 24 px of it
       let t = h && room.tools.find(o => o === h || o.getObjectById(h.id)), d = 24;
@@ -566,7 +757,7 @@ async function start() {
     });
     document.head.append(Object.assign(document.createElement('script'), { src: 'https://open.spotify.com/embed/iframe-api/v1', async: true }));
   }
-  addEventListener('keydown', e => { if (e.key === 'Escape' && (zoom.at || inRoomZoom())) leave(); });
+  addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (zoom.at || inRoomZoom()) leave(); else if (free && !cam.home && !portal) jump(poses[0], true); });   // Esc: out of a zoom or a stop, else a moved camera goes home
   function shelfHit(ev) {
     pick(ev);
     const i = ray.intersectObject(room.vinyl.grp, true).find(i => { for (let o = i.object; o; o = o.parent) if (o === room.vinyl.lamp) return false; return true; }), h = i?.object;   // the desk lamp is no part of the shelf: tapping it leaves
@@ -788,8 +979,25 @@ async function start() {
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; wake(); }).observe(stage);
   document.addEventListener('visibilitychange', wake);
   let shMoved = true;
+  // once a texture is on the GPU the page's own copy of it (a decoded image, a bitmap, a canvas) is dead weight that Safari counts against the
+  // tab, so it goes: a bitmap is closed, a canvas shrunk to 1 px, an image let go. Not the live ones that redraw (userData.live); not yet shown,
+  // on its first upload. A lost GPU context could not upload them again, so that reloads the page
+  function freeCopy(t) {
+    if (!t?.isTexture || t.userData.live || t.userData.freed || t.isRenderTargetTexture || !t.image?.width) return;
+    const drop = () => {
+      const im = t.image, size = { width: im.width, height: im.height }; t.userData.freed = true;
+      if (t.isCompressedTexture) t.mipmaps = t.mipmaps.map(m => ({ width: m.width, height: m.height }));   // KTX2: its transcoded levels
+      else { im.close?.(); if (im instanceof HTMLCanvasElement) im.width = im.height = 1; }
+      t.image = size;
+    };
+    if (renderer.properties.get(t).__webglTexture) drop(); else t.onUpdate = drop;
+  }
+  function freeCopies() {                                   // a sweep of the scene, half a second on (once the new things are drawn)
+    clearTimeout(freeCopies.t); freeCopies.t = setTimeout(() => scene.traverse(o => { for (const m of [].concat(o.material ?? [])) for (const k in m) freeCopy(m[k]); }), 500);
+  }
+  canvas.addEventListener('webglcontextlost', () => location.reload());
   function wake() { if (!running && visible && !document.hidden) { running = true; shMoved = true; last = performance.now(); renderer.setAnimationLoop(tick); } }
-  if (room) room.arrived = wake;                             // a late prop: one more frame, with its shadow
+  if (room) room.arrived = () => { wake(); freeCopies(); };   // a late prop: one more frame, with its shadow
   function tick(now) {
     const dt = Math.min(Math.max((now - last) / 1000, 0), .05) / SLOW; last = now;   // rAF time can trail performance.now()
     let moving = false, lit = false;
@@ -816,12 +1024,14 @@ async function start() {
         const st = Math.round(sTarget);                     // a new stop: the dragged view eases back to its framing
         if (st !== orb.stop) { orb.stop = st; orb.back = !drag; zoom.at = null; showing = null; }
         const zk = zoom.at ? 1 : 0;                         // .8 s in or out
-        hero.classList.toggle('is-zoomed', !!zoom.at);     // the shelf close-up: the name and hero text go, as in any close-up
+        hero.classList.toggle('is-zoomed', !!zoom.at || (free && !sCur && cam.dist < poses[0].pos.distanceTo(poses[0].look) - 1e-3));   // the shelf close-up, or the landing zoomed in at all: the name and hero text go, as in any close-up
         zoom.k = reduce ? zk : Math.min(Math.max(zoom.k + Math.sign(zk - zoom.k) * dt / .8, 0), 1);
         if (zoom.k !== zk) moving = true;
         brush.k = reduce ? brush.to : Math.min(Math.max(brush.k + Math.sign(brush.to - brush.k) * dt / .8, 0), 1);
         if (brush.k !== brush.to) moving = true;
         if (stepVinyl(dt)) moving = true;
+        if (tearing && stepTear()) moving = true;
+        room.paper.step(dt); if (room.paper.flying()) moving = true;
         const n = room.night;                               // the light: 3 s between day and night, a sunset or a sunrise
         if (n.at !== n.to) { n.at = reduce ? n.to : Math.min(Math.max(n.at + Math.sign(n.to - n.at) * dt / 3, 0), 1); n.set(n.at, n.to); moving = true; }
         if (!reduce && closeUp()) { if (n.at > 0) n.lights(now / 1000); lit = true; }   // the racing clock (and at night the shelf's lights) run smoothly while the room is in view, without redrawing the sun's shadow
@@ -856,15 +1066,17 @@ async function start() {
     if (rise < 0) rise = now;
     const x = Math.min((now - rise) / (RISE.ms * SLOW), 1), e = 1 - (1 - x) ** 4;
     lift.position.y = home.y - RISE.drop * (1 - e);
-    if (x >= 1) rise = 0;
+    if (x >= 1) { rise = 0; freeCopies(); }                 // risen: the copies of what arrived late (past start's wait) go too
     return !!rise;
   }
   if (rise) stepRise(performance.now());
   function render() {
     const t = performance.now() / 1000, on = bootStep();
-    if (room) {                                             // the clock: the real time at load, then racing; every hand glides
-      const d = new Date(CLOCK0 + (performance.now() - PERF0) * CLOCK_SPEED), sec = d.getSeconds() + d.getMilliseconds() / 1000, min = d.getMinutes() + sec / 60;
-      room.hands.s.rotation.z = -sec / 60 * Math.PI * 2; room.hands.m.rotation.z = -min / 60 * Math.PI * 2; room.hands.h.rotation.z = -(d.getHours() % 12 + min / 60) / 12 * Math.PI * 2;
+    if (room) {                                             // the clock: my time, in India (IST: UTC+5:30, no daylight saving); every hand glides
+      const d = new Date(Date.now() + IST), sec = d.getUTCSeconds() + d.getUTCMilliseconds() / 1000, min = d.getUTCMinutes() + sec / 60, h = d.getUTCHours();
+      room.hands.s.rotation.z = -sec / 60 * Math.PI * 2; room.hands.m.rotation.z = -min / 60 * Math.PI * 2; room.hands.h.rotation.z = -(h % 12 + min / 60) / 12 * Math.PI * 2;
+      const said = `My time in India: ${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`, small = tips.clock.querySelector('small');
+      if (small.textContent !== said) { small.textContent = said; if (hoverAt === 'clock') { hoverAt = null; hoverLabel('clock'); } }   // the hover tooltip follows the minute
     }
     if (boot) { if (on > units.length + 2) { boot = 0; powered = true; } }   // 2 steps past the last server, so it slides back in
     for (const u of units) u.plate.material.color.setScalar((u === hot ? 3.2 : 1) * (.1 + .9 * ease(Math.min(Math.max(on - u.i, 0), 1))) * (1 - .8 * end));
@@ -873,7 +1085,7 @@ async function start() {
     if (room) {                                             // the labels: rack and box at the close-up, Badminton auction at the showcase (or under the pointer there)
       const near = s => Math.abs(sCur - s) < .3 && !rise && !portal && !zoom.k;
       placed.length = 0;
-      const atClose = near(1) || near(STOPS - 1);
+      const atClose = near(1) || near(STOPS - 1) || free && near(0);   // desktop's landing: placed for the keyboard (quiet till focused)
       label(tips.rack, atClose, rackTop); label(tips.box, atClose, room.boxFoot); label(tips.vinyl, atClose, room.vinyl.tipAt);
       const starOn = near(BOX) || starHot;
       if (starOn && room.star) {                            // above the brush as the camera sees it (from overhead, that is its far side, not its highest point)
@@ -882,6 +1094,8 @@ async function start() {
         starTop.unproject(camera);
       }
       label(tips.star, starOn && !!room.star, starTop);
+      label(tips.home, homeOn && choosing() && !rise && !portal, room.homeAt);
+      label(tips.clock, performance.now() < clockUntil && choosing() && !portal, room.clockAt);
       label(tips.window, winHot && choosing() && !rise && !portal, room.winTop);   // last, so it moves below a label it would cover
       const view = zoom.at === 'vinyl' && !portal ? 'shelf' : starOn && !starHot ? 'box' : !portal && !zoom.at && Math.abs(sCur - Math.round(sCur)) < .2 && Math.round(sCur) >= FIRST && Math.round(sCur) < BOX ? 'server' : '';   // (the Spotify bar shows at the shelf on desktop too)
       if (stage.dataset.view !== view) stage.dataset.view = view;
@@ -908,10 +1122,19 @@ async function start() {
   // shortcut: idle redraw is 1x/s (clock hands, LED blink steps); the LEDs blink smoothly only while the loop runs
   setInterval(() => { if (!running && visible && !document.hidden && !portal) render(); }, 1000);   // the room's clock ticks (once a second) even with reduced motion: telling time is its job
   if (scanOn) { readScroll(); sCur = sTarget; updateScan(); }
+  if (free && window.probe) window.probe.cam = () => ({ pivot: cam.pivot.clone(), dist: cam.dist, yaw: cam.yaw, pitch: cam.pitch, at: sTarget });
   if (depthOn) stepDepth(1);
+  // every first time behind the loading screen, so the rise only moves: the box's props and the shelf's covers in (6 s at most: a slow one pops
+  // in later), every texture on the GPU, every shader compiled (in parallel where the browser can), one full frame for the shadows' own shaders.
+  // Done mid-rise, each was a stalled frame, and Safari compiles slowly
+  if (room) {
+    await Promise.race([Promise.all([track(room.loadProps()), track(room.vinyl.loadCovers())]), new Promise(r => setTimeout(r, 6000))]);
+    scene.traverse(o => { for (const m of [].concat(o.material ?? [])) for (const k in m) if (m[k]?.isTexture && !m[k].isRenderTargetTexture) renderer.initTexture(m[k]); });
+    placeCamera(); await renderer.compileAsync(scene, camera); render(); freeCopies();
+    if (rise) rise = -1;                                    // the ride starts when the screen goes, not when the room was built
+  }
   wake();
   placeCamera(); render(); loaded();
-  if (room) requestAnimationFrame(() => 'requestIdleCallback' in window ? requestIdleCallback(room.loadProps, { timeout: 1500 }) : setTimeout(room.loadProps, 1500));   // the box's props, after the first frame
 }
 
 // the room around the rack, in metres (the rack is 2 m tall, centred on the origin, front to +z).
@@ -919,12 +1142,19 @@ async function start() {
 const ROOM = 4.2, WALL_H = 3.4, Z0 = -.34;
 // the walls are built like a house's, outward from the room: plaster and paint inside, a half brick, render and paint outside (depths in m)
 const WALL = [[0, .015, 'paint'], [.015, .13, 'brick'], [.13, .15, 'paint']], T = .15;
-const CLOCK_SPEED = 720, CLOCK0 = Date.now(), PERF0 = performance.now();   // the wall clock races from the real time at load: 12 hours a minute (the hour hand laps in 60 s, the minute hand in 5 s)
+const IST = 5.5 * 3600e3;                                   // the wall clock shows my time: India, UTC+5:30
 const ROOM_LIGHT = .3;                                       // brightness of the room's own studio light (the rack keeps its dim one)
 const SUN = 13;                                               // sunlight through the window (illuminance across the beam)
-// the sun's direction of travel: 36 degrees up, in through the left wall, slanting 20 degrees toward the open front, so the window's four panes land
-// on the open floor. Higher, and with no ceiling it would clear the 3.4 m wall and light a strip along the floor's far edge too
-const SUN_DIR = ((up, side) => new THREE.Vector3(Math.cos(up) * Math.cos(side), -Math.sin(up), Math.cos(up) * Math.sin(side)))(36 * Math.PI / 180, 20 * Math.PI / 180);
+// the sun's direction of travel, by the time of day in India (f: 6 am 0 .. 6 pm 1, held at the ends): in through the left wall, 28 degrees up
+// at either end of the day to 38 at noon, slanting from straight across in the morning to 30 degrees toward the open front by evening, so the
+// window's four panes cross the open floor through the day. Higher, and with no ceiling it would clear the 3.4 m wall and light a strip along the
+// floor's far edge too; lower, and the panes would fall off its open edge
+const sunDir = (f, out = new THREE.Vector3()) => {
+  const up = (28 + 10 * Math.sin(Math.PI * f)) * Math.PI / 180, side = 30 * f * Math.PI / 180;
+  return out.set(Math.cos(up) * Math.cos(side), -Math.sin(up), Math.cos(up) * Math.sin(side));
+};
+const sunDay = () => { const d = new Date(Date.now() + IST); return Math.min(Math.max((d.getUTCHours() + d.getUTCMinutes() / 60 - 6) / 12, 0), 1); };
+const SUN_DIR = sunDir(sunDay());                             // now; setSun moves it
 const ALBEDO = .8;                                           // the white marble floor's: how much of the light on it bounces back into the room
 const BOX_SCALE = .65;                                       // the art box at 65% so the tools fill it (scripts/settle-art.py uses the same)
 const DISPLAY = { gap: .02, margin: .005 };                  // the record shelf's hover display: the clear space between records, and off the side walls (m)
@@ -933,7 +1163,7 @@ const DISPLAY = { gap: .02, margin: .005 };                  // the record shelf
 const NIGHT = { room: .12, hemi: .6, moon: 1.4, led: 9, desk: 3 };
 // the moon's direction of travel: 32 degrees up, in through the left wall like the sun but slanting further toward the open front
 const MOON_DIR = ((up, side) => new THREE.Vector3(Math.cos(up) * Math.cos(side), -Math.sin(up), Math.cos(up) * Math.sin(side)))(32 * Math.PI / 180, 35 * Math.PI / 180);
-const MARBLE = 1.2;                                          // ambientCG Marble 021 (CC0, assets/tex/marble-*.jpg): tile size in metres, the floor
+const MARBLE = 1.2;                                          // ambientCG Marble 021 (CC0, assets/tex/marble-*.ktx2): tile size in metres, the floor
 const TILE = { paint: 2, brick: .75 };                       // ambientCG PaintedPlaster017 and Bricks104 (CC0, assets/tex/paint-*, brick-*): metres per tile (a brick course is 7.5 cm)
 // the view out of the window over a day, e 0 (day) .. 1 (night). Going dark the sun sets in the west (left), going light it rises in the east
 // (right): the sky passes through a sunset's colours one way and a sunrise's the other. The moon and stars come out last and go first (the
@@ -970,24 +1200,26 @@ function roomFiles() {
     .setDecoderPath(new URL('../draco/', ASSETS).href))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
   const json = f => track(fetch(new URL(f, ASSETS)).then(r => r.json()));
   return { libs, main: Promise.all([json('art-layout.json'), json('record-layout.json') /* scripts/settle-records.py */, json('data/top-tracks.json') /* scripts/fetch-spotify.mjs */,
-      ...['clock', 'lamp', 'box'].map(f => track(glb(f)))]),   // the clock and lamp hold lights and hands, and the box places the rest
+      ...['clock', 'lamp', 'box', 'desk'].map(f => track(glb(f)))]),   // the clock and lamp hold lights and hands, the box places the rest, and the desk is too big to pop in late
     later: () => ['cup', 'spraycan', 'tube', 'paintbrush-1', 'paintbrush-2', 'paintbrush-3'].map(glb) };   // called once the room is up, so they don't slow it
 }
 async function buildRoom(renderer, rack, files) {
   const XL = rack.min.x - .18, X1 = XL + ROOM;                // the left wall 18 cm off the rack's side
   const [, , { RoomEnvironment }, { RectAreaLightUniformsLib }] = await files.libs;
   RectAreaLightUniformsLib.init();                           // the floor's bounce lights (see bounce())
-  const [layout, recLayout, { tracks }, clock, deskLamp, box] = await files.main;
+  const [layout, recLayout, { tracks }, clock, deskLamp, box, table] = await files.main;
 
   // white marble on the floor; the walls painted white (see WALL), so the things in the room do the talking
-  const tl = new THREE.TextureLoader(), texLoads = [];        // the room rises only once these are in: an untextured floor shows brown under the lamp
-  const surface = (k, rx, ry, roughness, n) => {             // a texture set, repeated rx x ry times over each face's UVs
-    const [map, normalMap, roughnessMap] = ['diff', 'nor', 'rough'].map(m => {
-      let t; texLoads.push(track(new Promise(r => { t = tl.load(new URL(`tex/${k}-${m}.jpg`, ASSETS).href, r, undefined, r); })));   // a failed one still lets the room in
-      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; return t;
-    });
-    map.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.MeshStandardMaterial({ map, normalMap, roughnessMap, roughness, normalScale: new THREE.Vector2(n, n) });
+  const tl = ktx2(renderer), texLoads = [];                  // the room rises only once these are in: an untextured floor shows brown under the lamp
+  // a texture set, repeated rx x ry times over each face's UVs: KTX2 (tex/*.ktx2, stored upside down, as three draws a JPEG; sRGB colour, linear
+  // normals and roughness, each as its file says), set on the material as each arrives
+  const surface = (k, rx, ry, roughness, n) => {
+    const mat = new THREE.MeshStandardMaterial({ roughness, normalScale: new THREE.Vector2(n, n) });
+    for (const [m, slot] of [['diff', 'map'], ['nor', 'normalMap'], ['rough', 'roughnessMap']])
+      texLoads.push(track(tl.then(l => new Promise(r => l.load(new URL(`tex/${k}-${m}.ktx2`, ASSETS).href, t => {
+        t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; mat[slot] = t; mat.needsUpdate = true; r();
+      }, undefined, r)))));                                   // a failed one still lets the room in
+    return mat;
   };
   const floor = new THREE.Mesh(new THREE.BoxGeometry(ROOM + T, .08, ROOM + T), surface('marble', ROOM / MARBLE, ROOM / MARBLE, .75, .4));   // a little polished
   floor.position.set(X1 - (ROOM + T) / 2, -1.04, Z0 - T + (ROOM + T) / 2);   // runs under the walls too
@@ -1008,7 +1240,7 @@ async function buildRoom(renderer, rack, files) {
   stalk.position.set(floor.position.x, -1.08, floor.position.z); stalk.rotation.y = Math.PI / 4; stalk.scale.setScalar(ROOM / 2.6);   // its housing faces the open corner; drawn for a 2.6 m floor
   const shell = new THREE.Group().add(floor, ...walls);
 
-  // the art box, real size, all CC BY 4.0: ForgeCAD's box against the back wall, left of the rack; in it NVIDIA's spray can
+  // the art box, real size, all CC BY 4.0: ForgeCAD's box on the floor under the clock, against the left wall; in it NVIDIA's spray can
   // and Palatial's cup, with NVIDIA's tubes and brushes in the cup
   const put = (o, x, y, z) => {                              // its bottom centre to x, y, z
     const b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3());
@@ -1016,7 +1248,7 @@ async function buildRoom(renderer, rack, files) {
   };
   const art = new THREE.Group().add(box);
   box.scale.setScalar(BOX_SCALE);
-  put(box, XL + ROOM / 2, -1, Z0 + .17);                     // its 40 cm side along the back wall (the folded flaps stand 1 cm off it), halfway along it
+  put(box, XL + new THREE.Box3().setFromObject(box).getSize(new THREE.Vector3()).x / 2 + .01, -1, Z0 + ROOM - .6);   // 1 cm off the left wall, under the clock
   const tools = [];                                          // what hops when the box is clicked: filled as the contents arrive (see the end)
 
   // the window: a painted frame and sash, thin glass, and a sky outside it (see paintSky())
@@ -1032,7 +1264,7 @@ async function buildRoom(renderer, rack, files) {
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(WIN.w, WIN.h).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d7e8f2', roughness: .05, transparent: true, opacity: .14, depthWrite: false,
     stencilWrite: true, stencilRef: 1, stencilZPass: THREE.ReplaceStencilOp }));   // marks the visible glass for the sky
   glass.position.set(XL - T / 2 + .004, WIN.y, WIN.z); win.add(glass);
-  const skyCv = Object.assign(document.createElement('canvas'), { width: 600, height: 520 }), skyTex = new THREE.CanvasTexture(skyCv);
+  const skyCv = Object.assign(document.createElement('canvas'), { width: 600, height: 520 }), skyTex = new THREE.CanvasTexture(skyCv); skyTex.userData.live = true;   // repainted at dusk and dawn
   skyTex.colorSpace = THREE.SRGBColorSpace;
   // the sky: big enough for a steep look through the window, drawn after the glass and only where it marked, so it never shows past the wall's edge
   const outside = new THREE.Mesh(new THREE.PlaneGeometry(8, 5).rotateY(Math.PI / 2), new THREE.MeshBasicMaterial({ map: skyTex, toneMapped: false,
@@ -1138,8 +1370,32 @@ async function buildRoom(renderer, rack, files) {
   const deskUp = bounce('#ffcf8a', (bulbAt.x + deskAim.x) / 2, shelfTop.z, .6, .3, NIGHT.desk / dd2 * .6, shelfTop.y);   // the lit part of the shelf top
   vinyl.box = new THREE.Box3().setFromObject(vinyl.top);
   vinyl.tipAt = vinyl.grp.localToWorld(new THREE.Vector3(0, 1.4, 0));
-  const root = new THREE.Group().add(shell, stalk, art, clock, vinyl.grp, win, sun, sun.target, sunUp, moon, moon.target, moonUp, hemi, desk, desk.target, deskUp);
+  // Poly Haven's Metal Office Desk (CC0): against the back wall in the gap between the rack and the shelf, shortened (less knee space, the drawers intact); my own laptop on it
+  let tm; table.traverse(o => { if (o.isMesh && !tm) tm = o; });
+  const tp = tm.geometry.attributes.position, DK = .58;      // the scan is 2 m wide: knee space x .58 and the drawers shifted in make 1.58, then x .92 below
+  for (let i = 0; i < tp.count; i++) { const x = tp.getX(i); tp.setX(i, Math.abs(x) < .5 ? x * DK : x - Math.sign(x) * .5 * (1 - DK)); }
+  tm.geometry.computeBoundingBox(); tm.geometry.computeBoundingSphere();
+  table.scale.setScalar(.92);
+  const shelfL = XL + ROOM * .82 - .4;                       // the shelf is 80 cm wide
+  put(table, (rack.max.x + shelfL) / 2, -1, Z0 + .49);       // 1 cm off the wall
+  const top = new THREE.Box3().setFromObject(table);
+  const lap = buildLaptop();
+  put(lap.grp, (top.min.x + top.max.x) / 2, top.max.y, top.min.z + .4);
+  const bin = new THREE.Vector3((top.max.x + shelfL) / 2, -1, Z0 + .25);   // the gap right of the desk
+  const pad = buildNotepad(MAX - 1); pad.grp.rotation.y = -.12;   // the notepad beside the laptop, a little askew; the first ball is already torn off it
+  put(pad.grp, (top.min.x + top.max.x) / 2 + .35, top.max.y, top.min.z + .45); pad.grp.updateMatrixWorld(true);
+  const rug = buildRug(!hoverable); rug.position.set(XL + ROOM / 2, -1, Z0 + ROOM * .58); rug.rotation.y = Math.PI / 2;   // the floor's middle, nudged clear of the desk; turned so the N faces the back wall
+  // what balls bounce off, as boxes (the desk first). Tight ones: the shelf's body up to its top, the turntable on it; the laptop's base,
+  // and its lid's own slab behind the hinge (one box each would float a ball over the shelf's left half, or over the keys)
+  lap.grp.updateMatrixWorld(true);
+  const deck = new THREE.Box3().setFromObject(vinyl.player), shelf = vinyl.box.clone(); shelf.max.y = deck.min.y;
+  const solids = [top, rack, shelf, deck, box, lap.base, lap.lid, pad.grp].map(o => o.isBox3 ? o : new THREE.Box3().setFromObject(o));
+  const paper = buildPaper({ bin, desk: top, room: { x0: XL, z0: Z0, x1: X1, z1: Z0 + ROOM, floor: -1 }, solids, rug: { x: rug.position.x, z: rug.position.z, r: .95 },
+    note: { at: new THREE.Vector3(lap.grp.position.x + .08, top.max.y + .33, Z0 + .002), face: new THREE.Vector3(0, 0, 1) } });   // the tally: on the wall behind the laptop, over its screen
+  { const s = crumpleSheet(0); s.set(1); paper.spawn(pad.grp.localToWorld(new THREE.Vector3(.02, pad.topY() + .03, .03)), s.mesh); }
+  const root = new THREE.Group().add(shell, stalk, art, clock, vinyl.grp, table, lap.grp, pad.grp, paper.grp, rug, win, sun, sun.target, sunUp, moon, moon.target, moonUp, hemi, desk, desk.target, deskUp);
   root.traverse(o => { if (o.isMesh && o !== glass) o.castShadow = o.receiveShadow = true; });   // everything in the room blocks and catches light but the glass
+  rug.traverse(o => { if (o.isInstancedMesh) o.castShadow = false; });   // the pile's shadow pass skips its discard: it would cast solid discs
   // the rack's dim reflection room leaves the walls dark: the room gets three.js's studio light as its own envMap (scene.environment stays the rack's)
   const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
   const lit = [];
@@ -1159,25 +1415,42 @@ async function buildRoom(renderer, rack, files) {
     }
     bulbs.instanceColor.needsUpdate = true; glows.forEach(l => l.color.multiplyScalar(1 / 12));
   };
-  const SUN_COL = new THREE.Color('#fff1d6'), SUN_LOW = new THREE.Color('#ff9a5a');
+  const SUN_COL = new THREE.Color('#fff1d6'), SUN_LOW = new THREE.Color('#ff9a5a'), sunBase = SUN_COL.clone();   // sunBase: the day's colour, warmer low (setSun)
+  let lampFlip = false;
   const setNight = (n, to = n) => {                         // 0 day .. 1 night; to: where it is heading (below n: back to day, a sunrise)
     const e = n;                                            // linear, in step with the page's 3 s fade (style.css .theme-fading)
     paintSky(skyCv, e, to < n); skyTex.needsUpdate = true;   // the view: the sun setting or rising, then the moon
-    sun.color.copy(SUN_COL).lerp(SUN_LOW, Math.sin(Math.PI * e));   // the low sun's warm light, either way
+    sun.color.copy(sunBase).lerp(SUN_LOW, Math.sin(Math.PI * e));   // the low sun's warm light, either way
     sun.intensity = SUN * (1 - e); sunUp.intensity = sunUp.userData.full * (1 - e); sun.visible = sunUp.visible = e < 1;
     moon.intensity = NIGHT.moon * e; moonUp.intensity = moonUp.userData.full * e; moon.visible = moonUp.visible = e > 0;
     hemi.intensity = NIGHT.hemi * e;
     for (const l of glows) { l.intensity = NIGHT.led * e; l.visible = e > 0; }
     bulbs.material.emissiveIntensity = 1.4 * e; lights(0);
-    desk.intensity = NIGHT.desk * e; deskUp.intensity = deskUp.userData.full * e; desk.visible = deskUp.visible = e > 0;
-    if (bulbM) { bulbM.emissive.set('#ffcf8a'); bulbM.emissiveIntensity = 2.5 * e; }   // the bulb glows at night
+    const le = lampFlip ? 1 - e : e;                         // the lamp: on at night, off by day, unless it was switched (out.lamp)
+    desk.intensity = NIGHT.desk * le; deskUp.intensity = deskUp.userData.full * le; desk.visible = deskUp.visible = le > 0;
+    lap.screen.emissiveIntensity = .35 + .75 * e;           // the screen glows more at night
+    if (bulbM) { bulbM.emissive.set('#ffcf8a'); bulbM.emissiveIntensity = 2.5 * le; }   // the bulb glows at night (or when switched on)
+    for (const l of [sun, moon, desk]) if (!l.visible && l.shadow.map) { l.shadow.map.dispose(); l.shadow.map = null; }   // a light that's off keeps no shadow map (16 MB at 2048); three makes it again when it's back on
     for (const m of lit) m.envMapIntensity = ROOM_LIGHT * (1 - (1 - NIGHT.room) * e);
   };
   const out = { root, art, tools, hands, vinyl, tracks, star: null,                 // star: the brush that is Badminton auction (the wide yellow one), once it's in
     all: new THREE.Box3().setFromObject(root), shell: new THREE.Box3().setFromObject(shell),
     box: ((b) => { b.max.y += .093; b.max.z += .013; return b; })(new THREE.Box3().setFromObject(art)),   // with the contents' reach above and in front of it (measured with them in)
     boxFoot: ((b) => new THREE.Vector3((b.min.x + b.max.x) / 2, b.min.y, b.max.z))(new THREE.Box3().setFromObject(box)),   // its label hangs below it
-    night: { at: 0, to: 0, set: setNight, lights },
+    night: { at: 0, to: 0, set: setNight, lights }, paper, pad,
+    // the sun at f of the day (sunDir): the light, where the panes land and their bounce, its colour (a touch warmer low); the shadows redraw
+    setSun(f) {
+      sunDir(f, SUN_DIR); sun.position.copy(rc).addScaledVector(SUN_DIR, -8);
+      const pts = [[wy0, wz0], [wy0, wz1], [wy1, wz0], [wy1, wz1]].map(([y, z]) => toFloor(new THREE.Vector3(XL - T / 2, y, z))), xs = pts.map(p => p.x);
+      const c = pts.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / 4);
+      sunUp.position.set(c.x, -1 + .002, c.z); sunUp.width = Math.max(...xs) - Math.min(...xs);
+      sunUp.userData.full = ALBEDO * SUN * -SUN_DIR.y / Math.PI; sunBase.copy(SUN_COL).lerp(SUN_LOW, .35 * (1 - Math.sin(Math.PI * f)));
+      setNight(out.night.at, out.night.to); renderer.shadowMap.needsUpdate = true;
+      return c;                                               // the panes' middle on the floor (the scripted checks)
+    },
+    lamp: () => { lampFlip = !lampFlip; setNight(out.night.at, out.night.to); },   // its switch: flips whatever the time of day gives it
+    clock, clockAt: (clock.updateWorldMatrix(true, false), clock.localToWorld(new THREE.Vector3(0, .3, 0))),   // the clock's label, over it
+    homeAt: new THREE.Vector3(rug.position.x, -1 + .02, rug.position.z),   // the rug's "you" arrow, at its middle, on top
     win, winTop: new THREE.Vector3(XL + .05, wy1 + .12, WIN.z),
     sunCheck: { toFloor, XL, T, WIN, wy0, wy1, wz0, wz1 } };        // the window and the sun's path, for the scripted light checks (?probe)
   root.add(outside);                                         // after the bounds and the envMap: unlit, and outside the room
@@ -1189,15 +1462,16 @@ async function buildRoom(renderer, rack, files) {
     if (tool) { o.userData.p0 = o.position.clone(); o.userData.up = new THREE.Vector3(0, 1, 0).applyQuaternion(o.quaternion); o.userData.mats = []; o.traverse(m => m.isMesh && o.userData.mats.push(m.material)); tools.push(o); }
     setNight(out.night.at); out.arrived?.();                 // its materials take the time of day; the page redraws (start sets arrived)
   };
-  await Promise.all(texLoads);
-  out.loadProps = () => {                                    // the box's contents: started once the first frame is up (start), or the moment the box is chosen
-    out.loadProps = () => {};
-    const later = files.later(), [cup, can, tube, ...brushes] = later;
+  await Promise.all(texLoads); (await tl).dispose();        // every KTX2 texture is in: its transcoding workers can go
+  out.loadProps = () => {                                    // the box's contents, behind the loading screen (start): a promise of them all, once
+    const later = files.later(), [cup, can, tube, ...brushes] = later, all = Promise.allSettled(later);
+    out.loadProps = () => all;
   cup.then(o => { o.traverse(m => { if (m.isMesh) { m.material.map = null; m.material.color.set('#f2efe8'); } }); settle(o, 'cup'); });   // plain white: the scan carries a noodle brand's print
   tube.then(o => { settle(o, 'tube', true); settle(o.clone(), 'tube-2', true); });
   can.then(o => settle(o, 'spraycan', true));
   brushes.forEach((b, i) => b.then(o => { settle(o, `paintbrush-${i + 1}`, true); if (!i) out.star = o; }));
   for (const f of later) f.catch(err => console.warn('room: a prop is missing', err));
+    return all;
   };
   return out;
 }
@@ -1245,7 +1519,7 @@ function buildVinyl(tracks, tl, layout) {
   grp.add(top);
   const PER = layout.length / 4;                            // records per cube, as scripts/settle-records.py stood them
   const covers = [];
-  let coversOn = false;
+  let coversOn = null;
   const sleeves = tracks.map((t, k) => {
     // the cover printed front and back; the edges and spine in the cover's own average colour, so a stack reads in its covers' colours
     const edge = mat(t.avg ?? '#808080', .7), art = new THREE.MeshStandardMaterial({ roughness: .6 });
@@ -1253,7 +1527,7 @@ function buildVinyl(tracks, tl, layout) {
     map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 8; art.color.set('#808080');
     covers.push(onLoad => new THREE.ImageLoader().load(new URL(`../${t.cover}`, ASSETS).href, img => {
       map.image = img; map.needsUpdate = true; art.map = map; art.color.set('#fff'); art.needsUpdate = true; onLoad();
-    }));
+    }, undefined, onLoad));                                   // a missing cover stays grey, and doesn't hold the rest
     const s = add(top, sleeve(), [edge, edge, edge, edge, art, art], ...layout[k].p);   // on its side, spine out, where the physics left it
     s.quaternion.set(...layout[k].q);
     s.userData = { i: k, c: k / PER | 0, j: k % PER, art, edge, map, p0: s.position.clone(), q0: s.quaternion.clone(), p: 0 };   // p: how far it is pulled out (stepVinyl)
@@ -1313,7 +1587,8 @@ function buildVinyl(tracks, tl, layout) {
     const step = (DISPLAY.gap + .004) / Math.cos(a), x = c.x0 + DISPLAY.margin + .157 * Math.sin(a) + .004 * Math.cos(a), z = (c.z0 + c.z1) / 2;
     c.display = { angle: a, q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2 - a), at: c.recs.map((_, j) => new THREE.Vector3(x + j * step, c.y0, z)) };
   }
-  return { grp, top, cubes, sleeves, loadCovers: onLoad => { if (!coversOn) { coversOn = true; covers.forEach(f => f(onLoad)); } }, disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
+  // loadCovers: once, a promise of every cover in (each also calls onLoad)
+  return { grp, top, cubes, sleeves, loadCovers: onLoad => coversOn ??= Promise.all(covers.map(f => new Promise(r => f(() => { onLoad?.(); r(); })))), disc, label, platter, arm, swing: swingAt(.142), inner: swingAt(.062), player: pl, on: new THREE.Vector3(pl.position.x + PC[0], H + TOPY + .0245, PC[1]) };
 }
 
 function softRoom(renderer) {
