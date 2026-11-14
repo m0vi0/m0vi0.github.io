@@ -13,14 +13,19 @@ const OPEN = [-.795, .795], U = .04445, RACK_U = 42, SERVER_U = 4, END = .06, BO
 const PLATE = { w: 0.56, h: U - .0008, y: TOP - U / 2, z: 0.3245 };   // the patch panel, the top 1U
 const VOLT = { pink: '#FF2D78', lime: '#BFFF00', blue: '#0057FF' };
 const INK = '#F5F0E8', YELLOW = '#FFD400', LIME = '#BFFF00';
+// the canvases' stored size, as a share of the size they are drawn at: the faceplates (and their LCDs) at 1536 px across, the rails at 96. They
+// are drawn in their full-size units through g.scale, so only the memory shrinks (a faceplate fills about that many screen pixels at its stop)
+const FACE = .75, RAILS = .75;
 const CREASE = THREE.MathUtils.degToRad(40);
 
-// items: the .rack > li elements, top server first. scanOn: label lines start blank and type in later (u.type)
-export async function buildRack(items, scanOn) {
+// items: the .rack > li elements, top server first. scanOn: label lines start blank and type in later (u.type). ktx2: the KTX2 loader (a promise),
+// for the model's compressed textures
+export async function buildRack(items, scanOn, ktx2) {
   await Promise.all(['500 64px "Space Grotesk"', '600 64px "Space Grotesk"', '64px "Bebas Neue"'].map(f => document.fonts.load(f)));
   const url = new URL(`${import.meta.env.BASE_URL}assets/rack.glb`, location.href).href;   // a static file in public/assets
   const early = await window.rackGlb;                        // index.html's head started it; a failed one is fetched again here
-  const gltf = early ? await new GLTFLoader().parseAsync(early, url.replace(/[^/]*$/, '')) : await new GLTFLoader().loadAsync(url);
+  const loader = new GLTFLoader().setKTX2Loader(await ktx2);
+  const gltf = early ? await loader.parseAsync(early, url.replace(/[^/]*$/, '')) : await loader.loadAsync(url);
   const rackRoot = new THREE.Group();
   rackRoot.add(gltf.scene);
   rackRoot.updateMatrixWorld(true);
@@ -54,7 +59,8 @@ export async function buildRack(items, scanOn) {
   const screwMat = new THREE.MeshStandardMaterial({ color: '#8a8a8a', roughness: .35, metalness: .9 });
   const blink = [];                                          // drive and port LEDs, lit by quads so they blink without redrawing textures
   const texOf = c => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
-  const glow = (g, x, y, r, col, k = 1.5) => { g.save(); g.fillStyle = col; g.shadowColor = col; g.shadowBlur = r * k; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
+  // the blur ignores g.scale, so it is scaled by hand
+  const glow = (g, x, y, r, col, k = 1.5) => { g.save(); g.fillStyle = col; g.shadowColor = col; g.shadowBlur = r * k * g.getTransform().a; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
   const box = (w, h, d, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; };
   const ledGeo = new THREE.CircleGeometry(1, 12);
   const ke = END / (OPEN[0] + 1), plain = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: .7, metalness: .2 });
@@ -91,7 +97,8 @@ export async function buildRack(items, scanOn) {
   {
     const bottom = BOTTOM, n = RACK_U, rh = n * U;
     for (const s of [-1, 1]) {
-      const c = document.createElement('canvas'), W = c.width = 128, H = c.height = Math.round(W * rh / RAIL.w), g = c.getContext('2d');
+      const c = document.createElement('canvas'), W = 128, H = Math.round(W * rh / RAIL.w), g = c.getContext('2d');   // drawn 128 wide, stored at RAILS of that
+      c.width = W * RAILS; c.height = Math.round(H * RAILS); g.scale(RAILS, RAILS);
       const num = s < 0 ? W * .26 : W * .74, hole = s < 0 ? W * .68 : W * .32, pxU = H / n;
       g.fillStyle = '#383838'; g.fillRect(0, 0, W, H);
       g.fillStyle = 'rgba(255,255,255,.10)'; g.fillRect(0, 0, 3, H); g.fillRect(W - 3, 0, 3, H);
@@ -180,14 +187,15 @@ export async function buildRack(items, scanOn) {
   // server front: bezel with the label in an LCD panel, a vent strip, 4 x 2 drive bays and a power button
   function faceLabel(u) {
     const fw = u.w * .985, fh = u.h * .9, accent = u.volt ?? YELLOW;
-    const c = document.createElement('canvas'), W = c.width = 2048, H = c.height = Math.round(W * fh / fw), g = c.getContext('2d');
+    const c = document.createElement('canvas'), W = 2048, H = Math.round(W * fh / fw), g = c.getContext('2d');   // drawn 2048 wide, stored at FACE of that
+    c.width = W * FACE; c.height = Math.round(H * FACE); g.scale(FACE, FACE);
     g.fillStyle = '#1b1b1b'; g.fillRect(0, 0, W, H);
     for (let y = 0; y < H; y += 3) { g.fillStyle = `rgba(255,255,255,${.012 + Math.random() * .018})`; g.fillRect(0, y, W, 1); } // brushing
     g.strokeStyle = 'rgba(255,255,255,.08)'; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
     g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, H - 10, W, 10);
     const lx = 44, ly = 34, lw = Math.round(W * .7), lh = H - 68;
     g.fillStyle = '#0a0a0a'; g.fillRect(lx - 6, ly - 6, lw + 12, lh + 12);
-    g.drawImage(lcd(u, lw, lh, scanOn ? 0 : Infinity), lx, ly);   // scan mode: the line stays blank until the camera rests on its server, then types
+    g.drawImage(lcd(u, lw, lh, scanOn ? 0 : Infinity), lx, ly, lw, lh);   // scan mode: the line stays blank until the camera rests on its server, then types
     u.split = ((lx + lw / 2) / W - .5) * fw;                  // two-link server: left/right half of the LCD
     const vx = lx + lw + 30, vw = 66;
     g.fillStyle = '#050505';
@@ -205,7 +213,7 @@ export async function buildRack(items, scanOn) {
     }
     const px = W - 85, py = H * .42;
     g.fillStyle = '#0c0c0c'; g.beginPath(); g.arc(px, py, 44, 0, 7); g.fill();
-    g.save(); g.strokeStyle = accent; g.shadowColor = accent; g.shadowBlur = 18; g.lineWidth = 6; g.beginPath(); g.arc(px, py, 36, 0, 7); g.stroke(); g.restore();
+    g.save(); g.strokeStyle = accent; g.shadowColor = accent; g.shadowBlur = 18 * FACE; g.lineWidth = 6; g.beginPath(); g.arc(px, py, 36, 0, 7); g.stroke(); g.restore();
     g.fillStyle = '#2a2a2a'; g.beginPath(); g.arc(px, py, 28, 0, 7); g.fill();
     g.strokeStyle = 'rgba(245,240,232,.55)'; g.lineWidth = 4; g.beginPath(); g.arc(px, py, 13, -1.1, 4.25); g.stroke();
     g.beginPath(); g.moveTo(px, py - 18); g.lineTo(px, py - 4); g.stroke();
@@ -213,8 +221,8 @@ export async function buildRack(items, scanOn) {
     g.font = '600 22px "Space Grotesk"'; g.fillStyle = 'rgba(245,240,232,.35)'; g.textAlign = 'center';
     g.fillText(`SRV-${String(u.i + 1).padStart(2, '0')}`, px, H - 58);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(fw, fh), new THREE.MeshBasicMaterial({ map: texOf(c), toneMapped: false }));
-    m.position.z = u.frontZ + 0.002;
-    u.type = n => { g.drawImage(lcd(u, lw, lh, u.typed = n), lx, ly); m.material.map.needsUpdate = true; };   // redraw only the LCD, n chars of its line
+    m.position.z = u.frontZ + 0.002; m.material.map.userData.live = true;   // live: the LCD redraws into it (rack.js keeps its canvas)
+    u.type = n => { g.drawImage(lcd(u, lw, lh, u.typed = n), lx, ly, lw, lh); m.material.map.needsUpdate = true; };   // redraw only the LCD, n chars of its line
     for (const [x, y] of lit) led(m, (x / W - .5) * fw, (.5 - y / H) * fh, .0024, u);
     return m;
   }
@@ -222,7 +230,7 @@ export async function buildRack(items, scanOn) {
   // LCD contents: LED, number, title, CTA / one line / chips (or two link halves)
   function lcd(u, W, H, n = Infinity) {
     const d = u.li.dataset, c = u.lcd ??= document.createElement('canvas');   // reused while the line types out
-    c.width = W; c.height = H;
+    c.width = Math.round(W * FACE); c.height = Math.round(H * FACE);   // drawn W x H, stored at the faceplate's FACE
     const g = c.getContext('2d'), pad = 56, accent = u.volt ?? YELLOW;
     const font = (spec, size, text, max) => {                 // shrink until the text fits
       do g.font = spec.replace('#', size + 'px'); while (g.measureText(text).width > max && (size -= 2) > 20);
@@ -233,7 +241,8 @@ export async function buildRack(items, scanOn) {
       if (n && s.length < text.length) g.fillRect(x + g.measureText(s).width + size * .08, y - size * .42, size * .42, size * .84);
     };
     const space = px => { if ('letterSpacing' in g) g.letterSpacing = px; };
-    const dot = (x, y, r, col) => { g.save(); g.fillStyle = col; g.shadowColor = col; g.shadowBlur = r * 1.5; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
+    g.scale(FACE, FACE);
+    const dot = (x, y, r, col) => { g.save(); g.fillStyle = col; g.shadowColor = col; g.shadowBlur = r * 1.5 * FACE; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); g.restore(); };
     g.fillStyle = '#121212'; g.fillRect(0, 0, W, H);
     g.strokeStyle = 'rgba(245,240,232,.14)'; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, H - 4);
     g.textBaseline = 'middle';

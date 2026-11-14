@@ -63,11 +63,11 @@ img, video { max-width: 100%; display: block; }
   transition: background-color .2s, color .2s;
 }
 .btn:hover { background: var(--fg); color: var(--bg); }
-.link {
-  display: inline-block; padding-bottom: .2rem; border-bottom: 1.5px solid currentColor;
-  font: 700 .75rem/1 var(--sans); letter-spacing: .2em; text-transform: uppercase; text-decoration: none;
+.link {                              /* a real underline: it follows the text (wraps with it), and thickens on hover */
+  display: inline-block; text-decoration: underline 1.5px currentColor; text-underline-offset: .35em;
+  font: 700 .75rem/1 var(--sans); letter-spacing: .2em; text-transform: uppercase;
 }
-.link:hover { border-bottom-width: 3px; }
+.link:hover { text-decoration-thickness: 3px; }
 
 /* ---- nav ---- */
 .nav {
@@ -165,7 +165,6 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
 
 /* ---- scan: the hero pins and scrolling flies the camera down the rack (rack.js sets --p, 0 far → 1 close) ---- */
 .stops { display: none; }
-.scan-on { scroll-snap-type: y proximity; scroll-padding-top: 0; }
 .scan-on .hero {
   --p: 0; position: sticky; top: 0; height: 100svh; min-height: 0;
 }
@@ -181,10 +180,14 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
 .scan-on .pitch { display: none; }
 .scan-on :is(.wordmark, .hero-copy, .scroll-cue) { opacity: calc(1 - var(--p) * 1.5); }
 .scan-on .hero.is-close .hero-copy { visibility: hidden; }
-/* one stop per half screen; the padding keeps the scroll span at 10 stops so stop i still lands on server i */
-.scan-on .stops { --stop: 50svh; display: block; margin-top: -100svh; padding-bottom: calc(100svh - var(--stop)); pointer-events: none; }
-.scan-on .stop { display: block; height: var(--stop); scroll-snap-align: start; }
-.scan-on .footer { scroll-snap-align: end; }
+/* phones only: one stop per half screen; the padding keeps the scroll span at 10 stops so stop i still lands on server i.
+   With a mouse there is no scroll tour: the landing is one screen and the wheel moves the camera (rack.js free) */
+@media not all and (hover: hover) and (pointer: fine) {
+  .scan-on { scroll-snap-type: y proximity; scroll-padding-top: 0; }
+  .scan-on .stops { --stop: 50svh; display: block; margin-top: -100svh; padding-bottom: calc(100svh - var(--stop)); pointer-events: none; }
+  .scan-on .stop { display: block; height: var(--stop); scroll-snap-align: start; }
+  .scan-on .footer { scroll-snap-align: end; }
+}
 .scan-on .marquee { display: none; }
 /* the servers carry this content now; it stays for screen readers and keyboard (focus moves the camera) */
 .scan-on :is(#projects, #contact) {
@@ -372,12 +375,10 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   .waves { filter: none; }
 }
 
-/* phones' loading screen (index.html .loader): from the first paint until rack.js has drawn the room; it gives up on its own after 25 s */
+/* the loading screen (index.html .loader): from the first paint until rack.js has drawn and warmed up the room; it gives up on its own after 25 s */
 .loader { display: none; }
-@media not all and (hover: hover) and (pointer: fine) {
-  .has-3d .loader { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
-    background: var(--yellow); color: var(--black); transition: opacity .4s, visibility 0s .4s; animation: loaderGiveUp 0s 25s forwards; }
-}
+.has-3d .loader { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+  background: var(--yellow); color: var(--black); transition: opacity .4s, visibility 0s .4s; animation: loaderGiveUp 0s 25s forwards; }
 .loader.done { opacity: 0; visibility: hidden; }
 .loader-mark { display: grid; place-items: center; width: 4.5rem; height: 5.5rem; background: var(--black); color: var(--yellow); font: 2.75rem/1 var(--display); }
 .loader-term { display: inline-flex; align-items: center; gap: .25em; font: 600 1rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -393,3 +394,4 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   .marquee-track > :nth-child(n+17) { display: none; }
   .nav, .btn { transition: none; }
 }
+.free-cam .scroll-cue { display: none; }   /* desktop's free camera has no scroll */
