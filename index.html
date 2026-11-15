@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap">
 <!-- static files live in public/assets (bump ?v= on style.css when it changes: browsers cache it); the code in src/ is bundled by Vite -->
-<link rel="stylesheet" href="/assets/style.css?v=19">
+<link rel="stylesheet" href="/assets/style.css?v=23">
 <!-- start the rack's model download with the HTML instead of after rack.js parses (buildRack takes it; Safari never used a <link rel="preload"> for it) -->
 <script>window.rackGlb = fetch('/assets/rack.glb').then(r => r.ok ? r.arrayBuffer() : null, () => null);</script>
 <script type="module" src="/src/scene/rack.js"></script>
@@ -36,6 +36,7 @@
   <nav aria-label="Sections">
     <a href="#projects">Projects</a>
     <a href="#contact">Contact</a>
+    <button type="button" class="motion-toggle" aria-pressed="false" aria-label="Pause motion"><svg class="pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg><svg class="play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg></button>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Switch to light mode"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   </nav>
 </header>
@@ -46,8 +47,8 @@
     <canvas class="waves" aria-hidden="true"></canvas>
     <h1 class="wordmark"><span class="first">Mervin</span> <span class="last">Sequeira</span></h1>
 
-    <div class="stage" aria-hidden="true">
-      <canvas id="rack3d"></canvas>
+    <div class="stage">   <!-- not aria-hidden: its labels are keyboard targets and "now playing" is a live region; the canvas alone is hidden -->
+      <canvas id="rack3d" aria-hidden="true"></canvas>
       <div class="rack-tip" hidden></div>
       <!-- the room's labels: rack.js places each over its object; the rack and box labels choose it, like a click on it -->
       <button type="button" class="rack-tip room-tip" data-at="rack" hidden>Server rack<small>Security work. Click to power on.</small></button>
@@ -58,6 +59,8 @@
       <button type="button" class="rack-tip room-tip" data-at="notepad" hidden>Notepad<small>Click for a fresh paper ball.</small></button>
       <p class="rack-tip room-tip" data-at="clock" hidden>Wall clock<small>My time in India</small></p>
       <p class="rack-tip room-tip" data-at="home" hidden>Based in India</p>
+      <button type="button" class="rack-tip room-tip" data-at="laptop" hidden>PacMap<small>My live traffic visualizer. Click for its server.</small></button>
+      <button type="button" class="rack-tip room-tip" data-at="pi" hidden>Raspberry Pi 3B+<small>My Kismet sensor: deauth alerts into Wazuh. Click for its server.</small></button>
       <p class="sr-only" data-at="now" aria-live="polite" hidden>Record<small></small></p>
       <!-- phones only (rack.js): the shelf's covers to tap, what's playing, Stop and Back; at the box, only Back -->
       <div class="phone-ui"><div class="covers"></div><div class="phone-bar"><button type="button" class="phone-back" aria-label="Back">←</button><button type="button" class="phone-stop">■ Stop</button></div></div>
@@ -67,6 +70,7 @@
     </div>
 
     <div class="hero-copy">
+      <p class="tagline">I build web apps and run my own security lab.</p>
       <p class="pitch">
         I run my own detection stack (Wazuh, Kismet and failover monitoring) and I'm training
         on the offensive side through the Hack The Box CPTS path. 2026 B.E. CSE (AI &amp; ML)
@@ -74,7 +78,7 @@
       </p>
       <div class="actions">
         <a class="btn" href="#projects">Projects</a>
-        <a class="link" href="#contact">Contact</a>
+        <a class="link mail" href="mailto:mervinsequeira485@gmail.com">mervinsequeira485@gmail.com</a>
       </div>
       <p class="hint">Scroll to step into the room.</p>   <!-- with a mouse rack.js says how to move the camera -->
     </div>

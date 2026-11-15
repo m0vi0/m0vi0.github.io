@@ -28,3 +28,5 @@ rm -rf "$tmp"
 #   $gt png rack.glb r1.glb --formats "*"
 #   $gt uastc r1.glb r2.glb --slots "@(normalTexture|occlusionTexture|metallicRoughnessTexture)" --level 2 --rdo --rdo-lambda 1 --zstd 18
 #   $gt etc1s r2.glb public/assets/rack.glb --slots "@(baseColorTexture|emissiveTexture)" --quality 255
+# third pass (2026-11-15): node scripts/slim-textures.mjs — the rack's unused maps out and its normal map to 512, the brick (only on the walls'
+# cut edges) to 256, the paint normal and marble roughness to 512. Decimating the box and cup in Blender was tried again and broke them both

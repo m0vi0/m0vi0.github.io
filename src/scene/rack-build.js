@@ -11,6 +11,7 @@ export const SERVER_FRONT = 0.299;
 // It still stands on the floor (y -1), about 2 m tall. The servers are 4U each, under a 1U patch panel; the rest of the rack stays empty
 const OPEN = [-.795, .795], U = .04445, RACK_U = 42, SERVER_U = 4, END = .06, BOTTOM = -1 + END, TOP = BOTTOM + RACK_U * U;
 const PLATE = { w: 0.56, h: U - .0008, y: TOP - U / 2, z: 0.3245 };   // the patch panel, the top 1U
+export const PORT1 = new THREE.Vector3(((420 + 38) / 3072 - .5) * PLATE.w, PLATE.y - .1 * PLATE.h, PLATE.z + .001);   // patch port 1's socket (patchPanel's x0, pw and row)
 const VOLT = { pink: '#FF2D78', lime: '#BFFF00', blue: '#0057FF' };
 const INK = '#F5F0E8', YELLOW = '#FFD400', LIME = '#BFFF00';
 // the canvases' stored size, as a share of the size they are drawn at: the faceplates (and their LCDs) at 1536 px across, the rails at 96. They
