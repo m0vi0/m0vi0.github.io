@@ -8,24 +8,25 @@ web
 
 ## Users
 
-Two audiences, weighted equally:
+Audiences, weighted equally:
 
-- **Recruiters and hiring managers** at security firms and VAPT consultancies hiring junior penetration testers. They skim in under a minute, look for a name, a role, a resume and proof, and forward the link.
-- **Technical interviewers** (senior pentesters) who read the writeups closely and judge methodology, ownership and honesty.
+- **Recruiters and hiring managers** hiring for security roles (pentest / VAPT, detection) **and** software roles. They skim in under a minute, look for a name, what the person does, proof and a way to get in touch, and forward the link.
+- **Technical interviewers**: senior pentesters, and engineers, who read the writeups closely and judge methodology, ownership and honesty.
+- **Founders and collaborators** looking for someone who builds fast and knows security.
 
 The page must survive both a 30-second skim and a careful read.
 
 ## Product Purpose
 
-Personal portfolio of Mervin Sequeira, a 2026 B.E. CSE (AI & ML) graduate seeking a junior pentest / VAPT role. Success: a reader can name him, the role he wants and one thing he built within one screen, can download his resume, and can verify claims through linked work.
+Personal portfolio of Mervin Sequeira, a 2026 B.E. CSE (AI & ML) graduate who builds web apps and works in cybersecurity, open to junior security and software roles. Success: within one screen a reader can name him, say what he does (builds, and secures) and find one thing he built, can reach him by email, and can verify claims through linked work.
 
 ## Positioning
 
-Detection-aware pentester: he builds and runs the defensive stack (Wazuh SIEM, Kismet WIDS, failover monitoring) and is training offensively (CPTS path, labs, bug bounty), so he knows what an attacker looks like from the defender's side. Honest learning status is part of the position; nothing is overclaimed.
+Builder and defender: he ships web apps (SmashBid, PacMap, this site and its 3D room) and runs his own detection lab (Wazuh, Kismet, failover), training offensively on the HTB CPTS path. The landing says it in one line: "I build web apps and run my own security lab." Honest learning status is part of the position; nothing is overclaimed.
 
 ## Operating Context
 
-Static site on GitHub Pages (`m0vi0.github.io`), plain HTML/CSS, no build step, no JavaScript framework. Visitors arrive from LinkedIn, the resume, or job applications; many on phones.
+Static site on GitHub Pages (`m0vi0.github.io`), built with Vite: a three.js room on the landing, plain HTML writeups. Visitors arrive from LinkedIn, the resume, or job applications; many on phones.
 
 ## Capabilities and Constraints
 

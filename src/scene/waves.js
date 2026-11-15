@@ -3,6 +3,11 @@
 import { createNoise2D } from 'simplex-noise';
 
 const canvas = document.querySelector('.waves');
+// the nav's pause control: html.paused stops the ambient motion (these waves, the marquee in style.css, the shelf's lights in rack.js)
+document.querySelector('.motion-toggle')?.addEventListener('click', e => {
+  const on = document.documentElement.classList.toggle('paused');
+  e.currentTarget.setAttribute('aria-pressed', on); e.currentTarget.setAttribute('aria-label', on ? 'Play motion' : 'Pause motion');
+});
 const ctx = canvas?.getContext('2d');
 if (ctx) {
   const noise = createNoise2D(), GAP = 8;
@@ -61,7 +66,7 @@ if (ctx) {
   const tick = t => { if (!(coarse || blurred()) || (odd = !odd)) draw(t); raf = requestAnimationFrame(tick); };   // half rate on phones and under the close-ups' blur
   function wake() {
     cancelAnimationFrame(raf); raf = 0;
-    if (reduce) draw(0); else if (visible && !document.hidden && !document.documentElement.classList.contains('portal-on')) raf = requestAnimationFrame(tick);   // hidden behind an open writeup
+    if (reduce) draw(0); else if (visible && !document.hidden && !document.documentElement.classList.contains('portal-on') && !document.documentElement.classList.contains('paused')) raf = requestAnimationFrame(tick);   // hidden behind an open writeup
   }
 
   new ResizeObserver(() => { setLines(); if (!raf) draw(performance.now()); }).observe(canvas);

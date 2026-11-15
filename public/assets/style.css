@@ -116,6 +116,8 @@ img, video { max-width: 100%; display: block; }
 .stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .stage .portal-page { position: fixed; inset: 0; width: 100vw; height: 100vh; border: 0; visibility: hidden; pointer-events: none; }
 .has-3d .stage { display: block; }
+.has-3d #rack3d { opacity: 0; transition: opacity .3s; }   /* until the room's ride starts (rack.js up): it waits just below the view */
+.room-up #rack3d { opacity: 1; }
 .rack-tip {
   position: absolute; z-index: 2; pointer-events: none; translate: 18px -50%;
   background: var(--black); color: var(--cream); padding: .6rem .85rem;
@@ -375,13 +377,16 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   .waves { filter: none; }
 }
 
-/* the loading screen (index.html .loader): from the first paint until rack.js has drawn and warmed up the room; it gives up on its own after 25 s */
+/* the loading screen (index.html .loader): over the room's part of the hero only, so the name, the line and the email read from the first paint;
+   from the first paint until rack.js has drawn and warmed up the room; it gives up on its own after 25 s */
 .loader { display: none; }
-.has-3d .loader { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
-  background: var(--yellow); color: var(--black); transition: opacity .4s, visibility 0s .4s; animation: loaderGiveUp 0s 25s forwards; }
+.has-3d .loader { position: fixed; inset: 0 0 0 45%; z-index: 100; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem;
+  transition: opacity .4s, visibility 0s .4s; animation: loaderGiveUp 0s 25s forwards; }
 .loader.done { opacity: 0; visibility: hidden; }
-.loader-mark { display: grid; place-items: center; width: 4.5rem; height: 5.5rem; background: var(--black); color: var(--yellow); font: 2.75rem/1 var(--display); }
-.loader-term { display: inline-flex; align-items: center; gap: .25em; font: 600 1rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.loader { --badge: var(--black); --badge-ink: var(--yellow); }   /* solid badges, so they read over the page: black on the yellow day, yellow on the dark night */
+[data-theme="dark"] .loader { --badge: var(--yellow); --badge-ink: var(--black); }
+.loader-mark { display: grid; place-items: center; width: 4.5rem; height: 5.5rem; background: var(--badge); color: var(--badge-ink); font: 2.75rem/1 var(--display); }
+.loader-term { display: inline-flex; align-items: center; gap: .25em; padding: .5rem .75rem; background: var(--badge); color: var(--badge-ink); font: 600 1rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .loader-cursor { width: .5em; height: 1em; background: currentColor; animation: loaderBlink 1s step-end infinite; }
 @keyframes loaderBlink { 50% { opacity: 0; } }
 @keyframes loaderGiveUp { to { opacity: 0; visibility: hidden; } }
@@ -395,3 +400,18 @@ button.room-tip, a.room-tip { pointer-events: auto; cursor: pointer; border: 0; 
   .nav, .btn { transition: none; }
 }
 .free-cam .scroll-cue { display: none; }   /* desktop's free camera has no scroll */
+
+/* the landing's line under the name and the email beside Projects; the nav's pause control (waves.js): html.paused stops the ambient motion
+   (the hero's waves, the marquee, the shelf's lights), 44px to tap like the theme toggle */
+.tagline { max-width: 30ch; }
+.mail { text-transform: none; letter-spacing: 0; }
+.motion-toggle { display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem; margin: -.75rem 0; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+.motion-toggle svg { width: 1rem; height: 1rem; }
+.motion-toggle .play, .paused .motion-toggle .pause { display: none; }
+.paused .motion-toggle .play { display: block; }
+.paused .marquee-track { animation-play-state: paused; }
+@media (max-width: 52rem) { .has-3d .loader { inset: 30% 0 25%; } }
+/* the shelf's close-up sees past the back wall's end: there the page's field gives way to a plain backdrop in the walls' tone */
+.stage { transition: background-color .6s; }
+.stage[data-view="shelf"] { background-color: #cfcfca; }
+[data-theme="dark"] .stage[data-view="shelf"] { background-color: #161616; }

@@ -1,11 +1,12 @@
 // Hero rack: the original black model; its servers map to .rack > li (top to bottom), the slots past the list stay blank.
 // Scrolling flies the camera in to the top server, then down the rack one server per stop; each server wears its own label.
 import * as THREE from 'three';
-import { buildRack, SERVER_FRONT } from './rack-build.js';   // the rack itself
+import { buildRack, SERVER_FRONT, PORT1 } from './rack-build.js';   // the rack itself
 import { buildRug } from './rug.js';
 import { buildLaptop } from './laptop.js';
 import { buildPaper, paperCheck, MAX } from './paper.js';
 import { buildNotepad, crumpleSheet } from './notepad.js';
+import { buildPi } from './pi.js';
 // the models, textures and data are static files in public/assets (they keep their URLs; Vite only bundles the code)
 const ASSETS = new URL(`${import.meta.env.BASE_URL}assets/`, location.href);
 // GPU-compressed textures (KTX2: the room's floor and walls, the rack's own maps) take a fraction of a decoded image's video memory. One loader,
@@ -89,9 +90,9 @@ async function start() {
     // with a mouse, the labels show as the cursor's tooltip on hover (src/components/room-tooltip.tsx): in the scene they stay for the keyboard
     // (shown while focused) and for phones, which have no hover. The now-playing label stays, since it holds a link
     if (hoverable) for (const [at, el] of Object.entries(tips)) if (at !== 'now') el.classList.add('quiet');
-    for (const at of ['rack', 'box', 'vinyl', 'lamp', 'notepad']) tips[at].addEventListener('click', () => choose(at));
+    for (const at of ['rack', 'box', 'vinyl', 'lamp', 'notepad', 'laptop', 'pi']) tips[at].addEventListener('click', () => choose(at));
     if (!hoverable) {                                       // phones: short "Tap" labels, and the shelf's covers as a row of buttons (style.css .phone-ui)
-      const short = { rack: 'Tap to power on', box: 'Tap to open', vinyl: 'Tap to pick a record', window: 'Tap for day / night', lamp: 'Tap to switch it on or off' };
+      const short = { rack: 'Tap to power on', box: 'Tap to open', vinyl: 'Tap to pick a record', window: 'Tap for day / night', lamp: 'Tap to switch it on or off', laptop: 'Tap for its server', pi: 'Tap for its server' };
       for (const [at, s] of Object.entries(short)) tips[at].querySelector('small').textContent = s;
       const star = tips.star.querySelector('small'); star.textContent = star.textContent.replace('Click', 'Tap');
       const ui = document.querySelector('.phone-ui'), covers = ui.querySelector('.covers');
@@ -308,15 +309,14 @@ async function start() {
     if (at !== shown) {
       if (at === 'star' && !reduce) hop = performance.now();   // arriving at the box: its tools hop
       shown = at; page(units[n]);
-      if (at !== 'star') readout(units[n] ?? null);
     }
     const near = Math.abs(sCur - n - FIRST) < .2 ? units[n] ?? null : null;   // the camera holds still within .2 of a stop
     if (near !== focus && (!near || Math.abs(sTarget - sCur) < .05)) setFocus(near);   // take a server only once the scroll settles
   }
-  function setFocus(u) {                                    // the server the camera rests on types its line and blinks faster
-    if (focus?.chars) focus.type(0);                        // its line goes blank again, so every visit types it fresh
+  function setFocus(u) {                                    // the server the camera rests on types its line (the first visit) and blinks faster
+    if (focus?.typed < focus?.chars) focus.type(focus.chars);   // left mid-line: it finishes at once, and every typed line stays
     focus = u;
-    if (u?.chars) { u.t0 = performance.now(); u.type(0); wake(); }
+    if (u?.chars && u.typed === undefined) { u.t0 = performance.now(); u.type(0); wake(); }
   }
   new ResizeObserver(() => { frame(); placeCamera(); render(); }).observe(stage);
   frame();
@@ -358,13 +358,10 @@ async function start() {
     const rack = hit ? units.reduce((a, b) => Math.abs(b.pivot.getWorldPosition(local).y - hit.point.y) < Math.abs(a.pivot.getWorldPosition(local).y - hit.point.y) ? b : a) : null;
     return { u, rack, hit, x: ev.clientX - r.left, y: ev.clientY - r.top };
   }
-  function readout(u) {
-  }
   function setHot(u, x, y) {
     hot = u;                                                // render() lifts the hovered faceplate from near-black to grey
     if (u) page(u);                                         // preload its page; the full pull-out waits for a click
     canvas.style.cursor = u?.link ? 'pointer' : 'grab';
-    if (!scanOn) readout(u);
     if (u && x != null && !scanOn) {                        // scan mode prints this on the faceplate instead
       tip.innerHTML = `${u.li.dataset.label}<small>${u.li.dataset.line ?? ''}</small>`;
       tip.style.left = x + 'px'; tip.style.top = y + 'px'; tip.hidden = false;
@@ -410,7 +407,7 @@ async function start() {
   }
   function which(ev) {                                     // 'rack', 'box', 'vinyl', 'window', 'lamp', 'clock', 'notepad', 'home' or null under the pointer: the nearest of their own meshes it touches, as on the shelf (what you see is what you tap)
     pick(ev); let best = null, bd = Infinity;
-    for (const [k, o] of [['rack', rackMeshes], ['box', [room.art]], ['window', [room.win]], ['lamp', [room.vinyl.lamp]], ['clock', [room.clock]], ['notepad', [room.pad.grp]]]) { const d = ray.intersectObjects(o, true)[0]?.distance ?? Infinity; if (d < bd) { bd = d; best = k; } }
+    for (const [k, o] of [['rack', rackMeshes], ['box', [room.art]], ['window', [room.win]], ['lamp', [room.vinyl.lamp]], ['clock', [room.clock]], ['notepad', [room.pad.grp]], ['laptop', [room.lap.grp]], ['pi', [room.pi.grp]]]) { const d = ray.intersectObjects(o, true)[0]?.distance ?? Infinity; if (d < bd) { bd = d; best = k; } }
     const v = shelfHit(ev); if (v.any && v.d < bd) best = 'vinyl';
     // the rug's "you" arrow: within 10 cm of the rug's middle, on its top (a plane, not the pile: its tufts are too many to raycast on every move)
     const d = ray.ray.intersectPlane(rugTop, tc) && tc.distanceTo(room.homeAt) < .1 ? ray.ray.origin.distanceTo(tc) : Infinity; if (d < bd) best = 'home';
@@ -612,6 +609,12 @@ async function start() {
     if (w === 'home') { if (!hoverable) { homeOn = !homeWas; if (homeOn) sfx('click'); } return void wake(); }   // with a mouse its tooltip shows on hover; phones: a tap shows its label
     sfx('click');
     if (w === 'lamp') return void (room.lamp(), wake());
+    if (w === 'laptop' || w === 'pi') {                     // the laptop is PacMap, the Pi the deauth sensor: each flies to its own server on the rack
+      const n = FIRST + units.findIndex(u => u.li.dataset.label === (w === 'pi' ? 'Deauth → Wazuh' : 'PacMap')), was = powered;
+      homeStop = FIRST - 1; toRack();
+      if (!hoverable) openIn(n, { lo: FIRST, hi: BOX - 1 }); else setTimeout(() => flyTo(n), was || reduce ? 0 : 700 * SLOW);
+      return void wake();
+    }
     if (w !== 'window' && w !== 'vinyl') homeStop = sCur > STOPS - 1.5 ? STOPS - 1 : FIRST - 1;
     if (w === 'window') return void document.querySelector('[data-theme-toggle]')?.click();   // the window: the site's theme toggle, day or night for the room and the page
     if (w === 'rack') { const was = powered; toRack(); if (!hoverable) openIn(FIRST, { lo: FIRST, hi: BOX - 1 }); else setTimeout(() => flyTo(FIRST), was || reduce ? 0 : 700 * SLOW); }   // phones: no waiting for the power-on
@@ -1034,7 +1037,7 @@ async function start() {
         room.paper.step(dt); if (room.paper.flying()) moving = true;
         const n = room.night;                               // the light: 3 s between day and night, a sunset or a sunrise
         if (n.at !== n.to) { n.at = reduce ? n.to : Math.min(Math.max(n.at + Math.sign(n.to - n.at) * dt / 3, 0), 1); n.set(n.at, n.to); moving = true; }
-        if (!reduce && closeUp()) { if (n.at > 0) n.lights(now / 1000); lit = true; }   // the racing clock (and at night the shelf's lights) run smoothly while the room is in view, without redrawing the sun's shadow
+        if (!reduce && closeUp() && n.at > 0 && !document.documentElement.classList.contains('paused')) { n.lights(now / 1000); lit = true; }   // at night the shelf's lights run smoothly while the room is in view, without redrawing the sun's shadow; by day the room idles at the clock's 1 Hz tick (setInterval below)
         if (orb.back) { orb.y -= orb.y * k; orb.p -= orb.p * k; if (Math.abs(orb.y) + Math.abs(orb.p) < 1e-4) { orb.y = orb.p = 0; orb.back = false; } else moving = true; }
         // the tools hop one after another (90 ms apart, 3 cm, 350 ms each); the Badminton brush stands 4 cm up at its stop; the tool under the
         // pointer lifts 2 cm more along its own lean and brightens a little, like a server under it
@@ -1062,7 +1065,9 @@ async function start() {
   // the lift's ride in: straight up from below (6 m at the old 2.6 m room, scaled with it), fast and then settling (ease-out quart) over 1.8 s
   const RISE = { ms: 1800, drop: 6 * ROOM / 2.6 };
   const home = lift.position.clone();
+  const up = () => document.documentElement.classList.add('room-up');   // the canvas shows (style.css): till the ride, the room waiting below would peek in
   function stepRise(now) {                                  // true while it rides
+    if (rise === -2) return false;                          // held below until the loading badge is gone (start)
     if (rise < 0) rise = now;
     const x = Math.min((now - rise) / (RISE.ms * SLOW), 1), e = 1 - (1 - x) ** 4;
     lift.position.y = home.y - RISE.drop * (1 - e);
@@ -1081,6 +1086,7 @@ async function start() {
     if (boot) { if (on > units.length + 2) { boot = 0; powered = true; } }   // 2 steps past the last server, so it slides back in
     for (const u of units) u.plate.material.color.setScalar((u === hot ? 3.2 : 1) * (.1 + .9 * ease(Math.min(Math.max(on - u.i, 0), 1))) * (1 - .8 * end));
     for (const b of blink) b.m.visible = on > (b.u?.i ?? 0) + .5 && (reduce || Math.sin(t * b.rate * (b.u && b.u === focus ? 3 : 1) + b.phase) > -.2);
+    if (room?.pi) room.pi.act.visible = reduce || Math.sin(t * 7) > .3;   // the Pi's activity LED
     renderer.render(scene, camera);
     if (room) {                                             // the labels: rack and box at the close-up, Badminton auction at the showcase (or under the pointer there)
       const near = s => Math.abs(sCur - s) < .3 && !rise && !portal && !zoom.k;
@@ -1131,8 +1137,9 @@ async function start() {
     await Promise.race([Promise.all([track(room.loadProps()), track(room.vinyl.loadCovers())]), new Promise(r => setTimeout(r, 6000))]);
     scene.traverse(o => { for (const m of [].concat(o.material ?? [])) for (const k in m) if (m[k]?.isTexture && !m[k].isRenderTargetTexture) renderer.initTexture(m[k]); });
     placeCamera(); await renderer.compileAsync(scene, camera); render(); freeCopies();
-    if (rise) rise = -1;                                    // the ride starts when the screen goes, not when the room was built
+    if (rise) { rise = -2; setTimeout(() => { rise = -1; up(); wake(); }, 900 * SLOW); }   // the ride starts once the loading badge has faded (.4 s) and a beat after, not when the room was built
   }
+  if (!rise) up();
   wake();
   placeCamera(); render(); loaded();
 }
@@ -1155,12 +1162,13 @@ const sunDir = (f, out = new THREE.Vector3()) => {
 };
 const sunDay = () => { const d = new Date(Date.now() + IST); return Math.min(Math.max((d.getUTCHours() + d.getUTCMinutes() / 60 - 6) / 12, 0), 1); };
 const SUN_DIR = sunDir(sunDay());                             // now; setSun moves it
+const BOUNCE = 3;                                            // the bounce lights at 3x their flux estimate, so the walls take a visible warm wash (the room's own light does the rest)
 const ALBEDO = .8;                                           // the white marble floor's: how much of the light on it bounces back into the room
 const BOX_SCALE = .65;                                       // the art box at 65% so the tools fill it (scripts/settle-art.py uses the same)
 const DISPLAY = { gap: .02, margin: .005 };                  // the record shelf's hover display: the clear space between records, and off the side walls (m)
 // dark mode: night you can see in. The studio light's share (tinted cool by a moon-blue hemisphere light), the moon through the window, the shelf's
-// Christmas lights (their glow's radiance) and the desk lamp's candela
-const NIGHT = { room: .12, hemi: .6, moon: 1.4, led: 9, desk: 3 };
+// Christmas lights (each cube glow's candela) and the desk lamp's candela
+const NIGHT = { room: .12, hemi: .6, moon: 1.4, glow: .25, desk: 3 };
 // the moon's direction of travel: 32 degrees up, in through the left wall like the sun but slanting further toward the open front
 const MOON_DIR = ((up, side) => new THREE.Vector3(Math.cos(up) * Math.cos(side), -Math.sin(up), Math.cos(up) * Math.sin(side)))(32 * Math.PI / 180, 35 * Math.PI / 180);
 const MARBLE = 1.2;                                          // ambientCG Marble 021 (CC0, assets/tex/marble-*.ktx2): tile size in metres, the floor
@@ -1195,7 +1203,7 @@ function paintSky(cv, e, rising) {
 // the Draco decoder is three's own, copied to public/draco: same origin, so no CDN connection on the room's critical path
 function roomFiles() {
   const libs = track(Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'),
-    import('three/addons/environments/RoomEnvironment.js'), import('three/addons/lights/RectAreaLightUniformsLib.js')]));
+    import('three/addons/environments/RoomEnvironment.js')]));
   const glb = f => libs.then(([{ GLTFLoader }, { DRACOLoader }]) => (glb.loader ??= new GLTFLoader().setDRACOLoader(new DRACOLoader()
     .setDecoderPath(new URL('../draco/', ASSETS).href))).loadAsync(new URL(`${f}.glb`, ASSETS).href)).then(g => g.scene);
   const json = f => track(fetch(new URL(f, ASSETS)).then(r => r.json()));
@@ -1205,8 +1213,7 @@ function roomFiles() {
 }
 async function buildRoom(renderer, rack, files) {
   const XL = rack.min.x - .18, X1 = XL + ROOM;                // the left wall 18 cm off the rack's side
-  const [, , { RoomEnvironment }, { RectAreaLightUniformsLib }] = await files.libs;
-  RectAreaLightUniformsLib.init();                           // the floor's bounce lights (see bounce())
+  const [, , { RoomEnvironment }] = await files.libs;
   const [layout, recLayout, { tracks }, clock, deskLamp, box, table] = await files.main;
 
   // white marble on the floor; the walls painted white (see WALL), so the things in the room do the talking
@@ -1282,14 +1289,17 @@ async function buildRoom(renderer, rack, files) {
   // the sun is .53 degrees across, so a shadow's edge blurs .93 cm per metre from what casts it: ~1.9 cm from the sash bars to the floor,
   // in shadow texels (2 * SR / SM m each), half each side. ponytail: one softness for the room, PCSS if a nearer shadow looks too soft
   sun.shadow.radius = 2 * Math.tan(.53 / 2 * Math.PI / 180) * 2 / (2 * SR / SM) / 2;
-  // where the sun lands: the window opening's corners carried along SUN_DIR to the floor (y -1), and its one bounce: a floor-sized area light facing up
-  // whose radiance is what a matte floor of ALBEDO gives back from that light, ALBEDO x E / pi (E: the light on the floor). Area lights cast no shadow
+  // where the sun lands: the window opening's corners carried along SUN_DIR to the floor (y -1), and its one bounce (bounce())
   const toFloor = p => p.clone().addScaledVector(SUN_DIR, (-1 - p.y) / SUN_DIR.y);
   const patch = [[wy0, wz0], [wy0, wz1], [wy1, wz0], [wy1, wz1]].map(([y, z]) => toFloor(new THREE.Vector3(XL - T / 2, y, z)));
   const pc = patch.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / 4);
-  const bounce = (color, x, z, w, d, E, y = -1) => {
-    const l = new THREE.RectAreaLight(color, ALBEDO * E / Math.PI, w, d);
-    l.position.set(x, y + .002, z); l.rotation.x = Math.PI / 2;   // its light leaves its -z side: turned to face up
+  // a lit patch's bounce, w x d at height y with E lux on it: a point light just under it, so what it gives back lights the walls and everything above
+  // it but not the patch itself (it faces away), with none of area lights' 100 KB lookup tables or per-pixel cost. Its candela: the patch's flux
+  // (ALBEDO x E x area) over pi, times BOUNCE. up: a spot aimed straight up instead, for a patch with things under it (the shelf's top over its
+  // cubes). No shadows: a bounce is soft
+  const bounce = (color, x, z, w, d, E, y = -1, up = false) => {
+    const I = ALBEDO * E * w * d / Math.PI * BOUNCE, l = up ? new THREE.SpotLight(color, I, 0, 1.4, 1, 2) : new THREE.PointLight(color, I, 0, 2);
+    l.position.set(x, y - (up ? .04 : .25), z); if (up) { l.add(l.target); l.target.position.set(0, 1, 0); }
     l.userData.full = l.intensity; return l;
   };
   const sunE = SUN * -SUN_DIR.y;                             // on the floor: the beam's illuminance times the cosine of its angle to the floor
@@ -1334,17 +1344,20 @@ async function buildRoom(renderer, rack, files) {
   vinyl.grp.position.set(XL + ROOM * .82, -1, Z0 + .2); vinyl.grp.updateMatrixWorld(true);
   // the shelf's Christmas lights: one green wire hung from each board's front edge, swagging across every cube (a catenary, 2.5 cm deep, so a
   // record pulled out passes under it), down the right side, then back along the lower row. 12 bulbs a cube, tipped toward you, in five colours
-  // that a controller changes at night (lights below). Each cube's glow is one small area light just inside it, tipped down over the records
+  // that a controller changes at night (lights below). Each cube glows in its bulbs' colours: two small point lights just inside it, each the colour of
+  // the bulb over it (bulbs 3 and 10 of its 12), reaching no further than the cube
   const BULBS = ['#ff1a1a', '#14d24a', '#1f5bff', '#ffc21a', '#ff6a00'].map(c => new THREE.Color(c)), SAG = .025, BZ = vinyl.cubes[0].z1 + .006;
   const hookY = c => c.y1 + .028, swag = (c, u) => hookY(c) + SAG * (Math.cosh(1.5 * u) - Math.cosh(1.5)) / (Math.cosh(1.5) - 1);   // u -1..1 across it
-  const pts = [], beads = [], glows = [];                  // beads[cube * 12 + j]: bulb j of that cube, left to right
+  const pts = [], beads = [], glows = [], GLOW = [2, 9];   // beads[cube * 12 + j]: bulb j of that cube, left to right; glows[cube * 2 + h]: over bulb GLOW[h]
   [0, 1, 3, 2].forEach((k, n) => {                         // top left, top right, bottom right, bottom left
     const c = vinyl.cubes[k], a = c.x0 - .015, b = c.x1 + .015, back = k > 1;   // hooks at the boards' middles; the lower row runs right to left
     if (n === 2) pts.push(new THREE.Vector3(b, hookY(vinyl.cubes[1]) - .03, BZ), new THREE.Vector3(b, hookY(c) + .03, BZ));   // straight down the side
     for (let s = n % 2 ? 1 : 0; s <= 12; s++) { const u = back ? 1 - s / 6 : s / 6 - 1; pts.push(new THREE.Vector3((a + b) / 2 + u * (b - a) / 2, swag(c, u), BZ)); }
     for (let j = 0; j < 12; j++) { const u = (j + .5) / 6 - 1; beads[k * 12 + j] = new THREE.Vector3((a + b) / 2 + u * (b - a) / 2, swag(c, u) - .002, BZ); }
-    const light = glows[k] = new THREE.RectAreaLight('#fff', 0, (c.x1 - c.x0) * .9, .03);
-    light.position.set((c.x0 + c.x1) / 2, c.y1 - .03, c.z1 - .02); light.rotation.x = -Math.PI / 4;   // its light leaves its -z side: tipped down into the cube
+    for (const h of [0, 1]) {                               // left, right: over bulbs GLOW[h]
+      const light = glows[k * 2 + h] = new THREE.PointLight('#fff', 0, .3, 2);
+      light.position.set(c.x0 + (c.x1 - c.x0) * (h ? .72 : .28), c.y1 - .04, c.z1 - .06);
+    }
   });
   const wire = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), 400, .0015, 6), new THREE.MeshStandardMaterial({ color: '#173d22', roughness: .6 }));
   const tip = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -Math.cos(1.1), Math.sin(1.1)));   // 63 degrees from hanging straight down
@@ -1367,7 +1380,7 @@ async function buildRoom(renderer, rack, files) {
   desk.position.copy(bulbAt); desk.target.position.copy(deskAim);
   desk.castShadow = true; desk.shadow.mapSize.set(1024, 1024); desk.shadow.bias = -.0004; desk.shadow.radius = 3;
   const shelfTop = vinyl.top.localToWorld(new THREE.Vector3(0, .8, 0)), dd2 = bulbAt.distanceToSquared(deskAim);
-  const deskUp = bounce('#ffcf8a', (bulbAt.x + deskAim.x) / 2, shelfTop.z, .6, .3, NIGHT.desk / dd2 * .6, shelfTop.y);   // the lit part of the shelf top
+  const deskUp = bounce('#ffcf8a', (bulbAt.x + deskAim.x) / 2, shelfTop.z, .6, .3, NIGHT.desk / dd2 * .6, shelfTop.y, true);   // the lit part of the shelf top
   vinyl.box = new THREE.Box3().setFromObject(vinyl.top);
   vinyl.tipAt = vinyl.grp.localToWorld(new THREE.Vector3(0, 1.4, 0));
   // Poly Haven's Metal Office Desk (CC0): against the back wall in the gap between the rack and the shelf, shortened (less knee space, the drawers intact); my own laptop on it
@@ -1381,6 +1394,15 @@ async function buildRoom(renderer, rack, files) {
   const top = new THREE.Box3().setFromObject(table);
   const lap = buildLaptop();
   put(lap.grp, (top.min.x + top.max.x) / 2, top.max.y, top.min.z + .4);
+  new THREE.ImageLoader().load(new URL('demo-poster.jpg', ASSETS).href, img => { lap.poster(img); out.arrived?.(); });   // PacMap on its screen
+  // my Raspberry Pi 3B+ on the rack's top, its Ethernet end to the front, cabled down into patch port 1
+  const pi = buildPi(), piGrp = new THREE.Group();
+  {
+    pi.grp.rotation.y = -Math.PI / 2; pi.grp.position.set(PORT1.x + .019, rack.max.y, rack.max.z - .1); piGrp.add(pi.grp); pi.grp.updateMatrixWorld(true);
+    const from = pi.grp.localToWorld(pi.port.clone()), lip = rack.max.z - .02;   // the top cap's front edge
+    const run = new THREE.CatmullRomCurve3([from, from.clone().setZ(from.z + .02), new THREE.Vector3(PORT1.x, rack.max.y + .006, lip), new THREE.Vector3(PORT1.x, PORT1.y + .035, PORT1.z + .03), new THREE.Vector3(PORT1.x, PORT1.y, PORT1.z + .012)]);
+    piGrp.add(new THREE.Mesh(new THREE.TubeGeometry(run, 48, .0025, 8), new THREE.MeshStandardMaterial({ color: '#2a6df4', roughness: .5 })));
+  }
   const bin = new THREE.Vector3((top.max.x + shelfL) / 2, -1, Z0 + .25);   // the gap right of the desk
   const pad = buildNotepad(MAX - 1); pad.grp.rotation.y = -.12;   // the notepad beside the laptop, a little askew; the first ball is already torn off it
   put(pad.grp, (top.min.x + top.max.x) / 2 + .35, top.max.y, top.min.z + .45); pad.grp.updateMatrixWorld(true);
@@ -1393,7 +1415,7 @@ async function buildRoom(renderer, rack, files) {
   const paper = buildPaper({ bin, desk: top, room: { x0: XL, z0: Z0, x1: X1, z1: Z0 + ROOM, floor: -1 }, solids, rug: { x: rug.position.x, z: rug.position.z, r: .95 },
     note: { at: new THREE.Vector3(lap.grp.position.x + .08, top.max.y + .33, Z0 + .002), face: new THREE.Vector3(0, 0, 1) } });   // the tally: on the wall behind the laptop, over its screen
   { const s = crumpleSheet(0); s.set(1); paper.spawn(pad.grp.localToWorld(new THREE.Vector3(.02, pad.topY() + .03, .03)), s.mesh); }
-  const root = new THREE.Group().add(shell, stalk, art, clock, vinyl.grp, table, lap.grp, pad.grp, paper.grp, rug, win, sun, sun.target, sunUp, moon, moon.target, moonUp, hemi, desk, desk.target, deskUp);
+  const root = new THREE.Group().add(shell, stalk, art, clock, vinyl.grp, table, lap.grp, pad.grp, paper.grp, rug, win, piGrp, sun, sun.target, sunUp, moon, moon.target, moonUp, hemi, desk, desk.target, deskUp);
   root.traverse(o => { if (o.isMesh && o !== glass) o.castShadow = o.receiveShadow = true; });   // everything in the room blocks and catches light but the glass
   rug.traverse(o => { if (o.isInstancedMesh) o.castShadow = false; });   // the pile's shadow pass skips its discard: it would cast solid discs
   // the rack's dim reflection room leaves the walls dark: the room gets three.js's studio light as its own envMap (scene.environment stays the rack's)
@@ -1406,14 +1428,13 @@ async function buildRoom(renderer, rack, files) {
   const BC = new THREE.Color();
   const lights = t => {
     const mode = Math.floor(t / 8) % 3, s = Math.floor(t * (mode === 2 ? 2.5 : 2));
-    glows.forEach(l => l.color.setRGB(0, 0, 0));
     for (let b = 0; b < beads.length; b++) {
       if (mode === 0) BC.copy(BULBS[(b + s) % 5]);
       else if (mode === 1) { const f = t / 1.5 + b * .25, i = Math.floor(f), x = f - i; BC.lerpColors(BULBS[i % 5], BULBS[(i + 1) % 5], x * x * (3 - 2 * x)); }
       else BC.copy(BULBS[(b + Math.floor((s + b % 2) / 2)) % 5]).multiplyScalar((b + s) % 2 ? .08 : 1);
-      bulbs.setColorAt(b, BC); glows[b / 12 | 0].color.add(BC);
+      bulbs.setColorAt(b, BC); const h = GLOW.indexOf(b % 12); if (h >= 0) glows[(b / 12 | 0) * 2 + h].color.copy(BC);
     }
-    bulbs.instanceColor.needsUpdate = true; glows.forEach(l => l.color.multiplyScalar(1 / 12));
+    bulbs.instanceColor.needsUpdate = true;
   };
   const SUN_COL = new THREE.Color('#fff1d6'), SUN_LOW = new THREE.Color('#ff9a5a'), sunBase = SUN_COL.clone();   // sunBase: the day's colour, warmer low (setSun)
   let lampFlip = false;
@@ -1421,30 +1442,33 @@ async function buildRoom(renderer, rack, files) {
     const e = n;                                            // linear, in step with the page's 3 s fade (style.css .theme-fading)
     paintSky(skyCv, e, to < n); skyTex.needsUpdate = true;   // the view: the sun setting or rising, then the moon
     sun.color.copy(sunBase).lerp(SUN_LOW, Math.sin(Math.PI * e));   // the low sun's warm light, either way
-    sun.intensity = SUN * (1 - e); sunUp.intensity = sunUp.userData.full * (1 - e); sun.visible = sunUp.visible = e < 1;
-    moon.intensity = NIGHT.moon * e; moonUp.intensity = moonUp.userData.full * e; moon.visible = moonUp.visible = e > 0;
+    // every light stays visible (at intensity 0 when off): a light switched off with .visible changes the light count, and every lit material then
+    // compiles new shaders, a ~1 s freeze on each switch to day. The price: the off lights' shadow maps stay in memory
+    sun.intensity = SUN * (1 - e); sunUp.intensity = sunUp.userData.full * (1 - e);
+    moon.intensity = NIGHT.moon * e; moonUp.intensity = moonUp.userData.full * e;
     hemi.intensity = NIGHT.hemi * e;
-    for (const l of glows) { l.intensity = NIGHT.led * e; l.visible = e > 0; }
+    for (const l of glows) l.intensity = NIGHT.glow * e;
     bulbs.material.emissiveIntensity = 1.4 * e; lights(0);
     const le = lampFlip ? 1 - e : e;                         // the lamp: on at night, off by day, unless it was switched (out.lamp)
-    desk.intensity = NIGHT.desk * le; deskUp.intensity = deskUp.userData.full * le; desk.visible = deskUp.visible = le > 0;
+    desk.intensity = NIGHT.desk * le; deskUp.intensity = deskUp.userData.full * le;
     lap.screen.emissiveIntensity = .35 + .75 * e;           // the screen glows more at night
     if (bulbM) { bulbM.emissive.set('#ffcf8a'); bulbM.emissiveIntensity = 2.5 * le; }   // the bulb glows at night (or when switched on)
-    for (const l of [sun, moon, desk]) if (!l.visible && l.shadow.map) { l.shadow.map.dispose(); l.shadow.map = null; }   // a light that's off keeps no shadow map (16 MB at 2048); three makes it again when it's back on
     for (const m of lit) m.envMapIntensity = ROOM_LIGHT * (1 - (1 - NIGHT.room) * e);
   };
   const out = { root, art, tools, hands, vinyl, tracks, star: null,                 // star: the brush that is Badminton auction (the wide yellow one), once it's in
     all: new THREE.Box3().setFromObject(root), shell: new THREE.Box3().setFromObject(shell),
     box: ((b) => { b.max.y += .093; b.max.z += .013; return b; })(new THREE.Box3().setFromObject(art)),   // with the contents' reach above and in front of it (measured with them in)
     boxFoot: ((b) => new THREE.Vector3((b.min.x + b.max.x) / 2, b.min.y, b.max.z))(new THREE.Box3().setFromObject(box)),   // its label hangs below it
-    night: { at: 0, to: 0, set: setNight, lights }, paper, pad,
+    night: { at: 0, to: 0, set: setNight, lights }, paper, pad, lap, pi,
     // the sun at f of the day (sunDir): the light, where the panes land and their bounce, its colour (a touch warmer low); the shadows redraw
     setSun(f) {
       sunDir(f, SUN_DIR); sun.position.copy(rc).addScaledVector(SUN_DIR, -8);
       const pts = [[wy0, wz0], [wy0, wz1], [wy1, wz0], [wy1, wz1]].map(([y, z]) => toFloor(new THREE.Vector3(XL - T / 2, y, z))), xs = pts.map(p => p.x);
       const c = pts.reduce((a, b) => a.add(b), new THREE.Vector3()).multiplyScalar(1 / 4);
-      sunUp.position.set(c.x, -1 + .002, c.z); sunUp.width = Math.max(...xs) - Math.min(...xs);
-      sunUp.userData.full = ALBEDO * SUN * -SUN_DIR.y / Math.PI; sunBase.copy(SUN_COL).lerp(SUN_LOW, .35 * (1 - Math.sin(Math.PI * f)));
+      const len = Math.max(...xs) - Math.min(...xs);
+      sunUp.position.set(c.x, -1.25, c.z);
+      sunUp.userData.full = ALBEDO * SUN * -SUN_DIR.y * len * WIN.w / Math.PI * BOUNCE;   // as bounce() works it out
+      sunBase.copy(SUN_COL).lerp(SUN_LOW, .35 * (1 - Math.sin(Math.PI * f)));
       setNight(out.night.at, out.night.to); renderer.shadowMap.needsUpdate = true;
       return c;                                               // the panes' middle on the floor (the scripted checks)
     },

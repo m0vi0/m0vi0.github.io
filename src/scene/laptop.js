@@ -62,5 +62,12 @@ export function buildLaptop() {
   const screen = new THREE.MeshStandardMaterial({ color: '#000', emissive: '#fff', emissiveMap: screenTex(), emissiveIntensity: .35, roughness: .2 });
   const pane = add(lid, new THREE.PlaneGeometry(W - 2 * BZ, D - 2 * BZ), screen, 0, -.0005, D / 2);
   pane.rotation.x = Math.PI / 2;   // faces down when closed, so out toward +z when open
-  return { grp, screen, base, lid };                         // base, lid: their own boxes are what a paper ball bounces off
+  const poster = img => {                                    // a still of PacMap on the screen, under the menu bar and notch (look test)
+    const [c, g] = canvas(1200, 840), h = 1200 * img.height / img.width;
+    g.fillStyle = '#0b0b10'; g.fillRect(0, 0, 1200, 840); g.drawImage(img, 0, (840 - h) / 2 + 14, 1200, h);
+    g.fillStyle = 'rgba(8,8,20,.85)'; g.fillRect(0, 0, 1200, 30);
+    g.fillStyle = '#000'; g.beginPath(); g.roundRect(530, -14, 140, 44, [0, 0, 12, 12]); g.fill();
+    screen.emissiveMap.dispose(); screen.emissiveMap = tex(c); screen.needsUpdate = true;
+  };
+  return { grp, screen, base, lid, poster };                 // base, lid: their own boxes are what a paper ball bounces off
 }
